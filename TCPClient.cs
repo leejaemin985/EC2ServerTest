@@ -41,7 +41,7 @@ namespace App
 
                     sw.Stop();
                     string responseMessage = Encoding.UTF8.GetString(buffer, 0, bytesRead);
-                    Console.WriteLine($"서버로부터 응답 수신: {responseMessage} (RTT: {sw.ElapsedTicks} ticks)");
+                    Console.WriteLine($"서버로부터 응답 수신: {responseMessage} (RTT: {sw.ElapsedMilliseconds} ms)");
 
                     sw.Reset();
                 }

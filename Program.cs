@@ -16,20 +16,21 @@ namespace App
             bool isTcp = args[0].Equals("tcp");
             bool isServer = args[1].Equals("s");
 
-            const string ipAddress = "127.0.0.1";
-            const int port = 7777;
+            const string ipAddress = "43.200.178.250";
+            const int PORT_TCP = 7777;
+            const int PORT_UDP = 8888;
 
             if (isTcp)
             {
                 if (isServer)
                 {
                     Console.WriteLine("Start TCP Server");
-                    TCPServer.StartServer(port);
+                    TCPServer.StartServer(PORT_TCP);
                 }
                 else
                 {
                     Console.WriteLine("Start TCP Client");
-                    TCPClient.StartClient(ipAddress, port);
+                    TCPClient.StartClient(ipAddress, PORT_TCP);
                 }
             }
             else
@@ -37,12 +38,12 @@ namespace App
                 if (isServer)
                 {
                     Console.WriteLine("Start UDP Server");
-                    UDPServer.StartServer(port);
+                    UDPServer.StartServer(PORT_UDP);
                 }
                 else
                 {
                     Console.WriteLine("Start UDP Client");
-                    UDPClient.StartClient(ipAddress, port);
+                    UDPClient.StartClient(ipAddress, PORT_UDP);
                 }
             }
 
