@@ -27,7 +27,7 @@ namespace App
                 }
                 else
                 {
-
+                    TCPClient.StartClient("127.0.0.1", 7777);
                 }
             }
             else

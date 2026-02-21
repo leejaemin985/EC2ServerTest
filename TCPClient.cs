@@ -5,6 +5,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Drawing;
+using System.Buffers.Binary;
 
 namespace App
 {
@@ -19,7 +20,30 @@ namespace App
 
             Console.WriteLine($"서버 연결됨 ({serverIp} : {port})");
 
+            while (true)
+            {
+                string? line = Console.ReadLine();
+                if (line == null) break;
+                if (line.Equals("/quit", StringComparison.OrdinalIgnoreCase)) break;
 
+                byte[] payload = Encoding.UTF8.GetBytes(line);
+
+                byte[] packet = new byte[4 + payload.Length];
+                BinaryPrimitives.WriteInt32LittleEndian(packet.AsSpan(0, 4), payload.Length);
+                payload.CopyTo(packet.AsSpan(4));
+
+                await socket.SendAsync(packet, SocketFlags.None);
+            }
+
+            try
+            {
+                socket.Shutdown(SocketShutdown.Both);
+            }
+            catch { }
+            finally
+            {
+                socket?.Close();
+            }
 
         }
     }
