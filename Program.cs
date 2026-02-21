@@ -11,7 +11,7 @@ namespace App
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             if (args == null || args.Length < 2)
             {
@@ -27,7 +27,7 @@ namespace App
                 }
                 else
                 {
-                    TCPClient.StartClient("127.0.0.1", 7777);
+                    await TCPClient.StartClient("127.0.0.1", 7777);
                 }
             }
             else

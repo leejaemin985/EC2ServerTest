@@ -22,7 +22,7 @@ namespace App
 
                 //접속 가능한 유저 수 설정
                 listener.Listen(10);
-                Console.WriteLine($"TCP 서버 시작 ({listener.RemoteEndPoint})");
+                Console.WriteLine($"TCP 서버 시작");
 
                 while (true)
                 {
