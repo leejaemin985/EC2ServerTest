@@ -1,5 +1,11 @@
 ﻿using System;
+using System.Buffers.Binary;
+using System.Net;
 using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
 
 namespace App
 {
@@ -9,44 +15,26 @@ namespace App
         {
             if (args == null || args.Length < 2)
             {
-                Console.WriteLine("Invalid Command");
+                Console.WriteLine("[Error] Invalid Command");
                 return;
             }
 
-            bool isTcp = args[0].Equals("tcp");
-            bool isServer = args[1].Equals("s");
-
-            const string ipAddress = "43.200.178.250";
-            const int PORT_TCP = 7777;
-            const int PORT_UDP = 8888;
-
-            if (isTcp)
+            if (args[0].ToLower().Equals("tcp"))
             {
-                if (isServer)
+                if (args[1].ToLower().Equals("s"))
                 {
-                    Console.WriteLine("Start TCP Server");
-                    TCPServer.StartServer(PORT_TCP);
+                    TCPServer.StartServer(7777);
                 }
                 else
                 {
-                    Console.WriteLine("Start TCP Client");
-                    TCPClient.StartClient(ipAddress, PORT_TCP);
+
                 }
             }
             else
             {
-                if (isServer)
-                {
-                    Console.WriteLine("Start UDP Server");
-                    UDPServer.StartServer(PORT_UDP);
-                }
-                else
-                {
-                    Console.WriteLine("Start UDP Client");
-                    UDPClient.StartClient(ipAddress, PORT_UDP);
-                }
+                //Console.WriteLine("");
+                return;
             }
-
         }
     }
 }
