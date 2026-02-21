@@ -27,7 +27,7 @@ namespace App
                 }
                 else
                 {
-                    await TCPClient.StartClient("127.0.0.1", 7777);
+                    await TCPClient.StartClient("43.200.178.250", 7777);
                 }
             }
             else
