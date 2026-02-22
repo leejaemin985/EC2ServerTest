@@ -1,11 +1,4 @@
 ﻿using System;
-using System.Buffers.Binary;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-
 
 namespace App
 {
@@ -32,7 +25,6 @@ namespace App
             }
             else
             {
-                //Console.WriteLine("");
                 return;
             }
         }

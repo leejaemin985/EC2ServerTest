@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -7,93 +8,100 @@ namespace App
 {
     public class TCPServer
     {
-        public static void StartServer(int port)
+        private static readonly ConcurrentDictionary<int, Socket> clients = new();
+        private static int nextClientId = 0;
+
+        public static async Task StartServerAsync(int port, CancellationToken ct = default)
         {
             Socket listener = null;
 
             try
             {
-                //TCP 소켓 설정 (IPv4: Internetwork, TCP는 Stream방식을 사용함)
                 listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                var endPoint = IPEndPoint(IPAddress.Any, port);
+                listener.Bind(endPoint);
 
-                //Any: 모든 IP로부터 받음 설정.
-                IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, port);
-                listener.Bind(localEndPoint);
-
-                //접속 가능한 유저 수 설정
-                listener.Listen(10);
-                Console.WriteLine($"TCP 서버 시작");
-
-                while (true)
+                while (!ct.IsCancellationRequested)
                 {
-                    Socket clientSocket = listener.Accept();
+                    Socket clientSocket = await listener.AcceptAsync();
                     clientSocket.NoDelay = true;
 
-                    Console.WriteLine($"클라이언트 연결됨. ({clientSocket.RemoteEndPoint})");
-                    _ = HandleClient(clientSocket);
+                    int clientId = Interlocked.Increment(ref nextClientId);
+                    clients[clientId] = clientSocket;
+                    Console.WriteLine($"클라이언트 연결됨. ID: {clientId} ({clientSocket.RemoteEndPoint})");
+
+                    HandleClientAsync(clientId, clientSocket, ct);
                 }
-
-
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("서버 종료 (Operation Cancel Exception)");
             }
             catch (Exception e)
             {
-                Console.WriteLine($"[Error] {e.Message}");
+                Console.WriteLine($"[Error] {e}");
             }
             finally
             {
-                listener?.Close();
+                try { listener?.Close(); } catch { }
+                foreach (var kv in clients)
+                {
+                    SafeClose(kv);
+                }
+
+                Console.WriteLine("서버를 종료합니다.");
             }
         }
 
-        private static async Task HandleClient(Socket clientSocket)
+        private static void SafeClose(Socket s)
         {
+            if (s == null) return;
+            try { s.Shutdown(SocketShutdown.Both); } catch { }
+            try { s.Close(); } catch { }
+        }
+
+        private static async Task HandleClientAsync(int clientId, Socket clientSocket, CancellationToken cts)
+        {
+            byte[] lengthBuf = new byte[4];
+
             try
             {
-                byte[] lengthBuf = new byte[4];
-                while (true)
+                while (!cts.IsCancellationRequested)
                 {
-                    int byteRead = await ReadExactAsync(clientSocket, lengthBuf, 4);
-                    if (byteRead == 0) break;
+                    int read = await ReadExactAsync(clientSocket, lengthBuf, 4, cts);
+                    if (read == 0) break;
 
-                    //앞 LengthBuff 컨버팅하여 페이로드의 총 길이 구함
                     int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBuf);
-
                     if (payloadLength <= 0 || payloadLength > 1024 * 1024)
                     {
-                        throw new InvalidOperationException($"Invalid payload Length (length: {payloadLength})");
+                        throw new InvalidOperationException($"Invalid payload length: {payloadLength}");
                     }
 
                     byte[] payload = new byte[payloadLength];
-                    byteRead = await ReadExactAsync(clientSocket, payload, payloadLength);
-                    if (byteRead == 0) break;
+                    read = await ReadExactAsync(clientSocket, payload, payloadLength);
+                    if (read == 0) break;
 
                     string msg = Encoding.UTF8.GetString(payload);
-                    Console.WriteLine($"[RECV] {clientSocket.RemoteEndPoint} msg: {msg}");
+                    Console.WriteLine($"[RECV] {clientId}: {msg}");
                 }
-
             }
             catch (Exception e)
             {
                 Console.WriteLine($"[Error] {e.Message}");
             }
-            finally
-            {
-                clientSocket?.Shutdown(SocketShutdown.Both);
-                clientSocket?.Close();
-            }
+
         }
 
-        //소켓으로부터 size만큼 읽어들인후 buffer에 대입하고 저장된 길이를 반환.
-        private static async Task<int> ReadExactAsync(Socket socket, byte[] buffer, int size)
+        private static async Task<int> ReadExactAsync(Socket socket, byte[] buffer, int size, CancellationToken cts)
         {
             int totalRead = 0;
+
             while (totalRead < size)
             {
-
-                //ArraySegment => buffer를 분할하여 사용하기 위함. totalRead인덱스 부터 size-totalRead인덱스 만큼 잘라서 이곳에 receive함.
-                int read = await socket.ReceiveAsync(
-                    new ArraySegment<byte>(buffer, totalRead, size - totalRead),
-                    SocketFlags.None);
+                int read = socket.ReceiveAsync(
+                    ArraySegment<byte>(buffer, totalRead, size - totalRead),
+                    SocketFlags.None,
+                    cts);
 
                 if (read == 0) return 0;
                 totalRead += read;
