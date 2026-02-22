@@ -11,17 +11,25 @@ namespace App
         private static readonly ConcurrentDictionary<int, Socket> clients = new();
         private static int nextClientId = 0;
 
-        public static async Task StartServerAsync(int port, CancellationToken ct = default)
+        private static CancellationTokenSource cts;
+
+        public static async Task StartServerAsync(int port)
         {
             Socket listener = null;
+            if (cts != null)
+            {
+                cts.Cancel();
+            }
+            cts = new();
 
             try
             {
                 listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-                var endPoint = IPEndPoint(IPAddress.Any, port);
+                var endPoint = new IPEndPoint(IPAddress.Any, port);
                 listener.Bind(endPoint);
+                listener.Listen(100);
 
-                while (!ct.IsCancellationRequested)
+                while (!cts.IsCancellationRequested)
                 {
                     Socket clientSocket = await listener.AcceptAsync();
                     clientSocket.NoDelay = true;
@@ -30,7 +38,7 @@ namespace App
                     clients[clientId] = clientSocket;
                     Console.WriteLine($"클라이언트 연결됨. ID: {clientId} ({clientSocket.RemoteEndPoint})");
 
-                    HandleClientAsync(clientId, clientSocket, ct);
+                    HandleClientAsync(clientId, clientSocket, cts.Token);
                 }
             }
             catch (OperationCanceledException)
@@ -44,7 +52,7 @@ namespace App
             finally
             {
                 try { listener?.Close(); } catch { }
-                foreach (var kv in clients)
+                foreach (var kv in clients.Values)
                 {
                     SafeClose(kv);
                 }
@@ -78,7 +86,7 @@ namespace App
                     }
 
                     byte[] payload = new byte[payloadLength];
-                    read = await ReadExactAsync(clientSocket, payload, payloadLength);
+                    read = await ReadExactAsync(clientSocket, payload, payloadLength, cts);
                     if (read == 0) break;
 
                     string msg = Encoding.UTF8.GetString(payload);
@@ -98,8 +106,8 @@ namespace App
 
             while (totalRead < size)
             {
-                int read = socket.ReceiveAsync(
-                    ArraySegment<byte>(buffer, totalRead, size - totalRead),
+                int read = await socket.ReceiveAsync(
+                    new ArraySegment<byte>(buffer, totalRead, size - totalRead),
                     SocketFlags.None,
                     cts);
 

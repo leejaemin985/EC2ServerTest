@@ -16,7 +16,7 @@ namespace App
             {
                 if (args[1].ToLower().Equals("s"))
                 {
-                    TCPServer.StartServer(7777);
+                    await TCPServer.StartServerAsync(7777);
                 }
                 else
                 {
