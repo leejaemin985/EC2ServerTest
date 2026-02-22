@@ -2,14 +2,13 @@ using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Text;
 
 namespace App
 {
     public class TCPServer
     {
-        private static readonly ConcurrentDictionary<int, Socket> clients = new();
+        private static readonly ConcurrentDictionary<int, ClientInfo> clients = new();
         private static int nextClientId = 0;
 
         private static CancellationTokenSource cts;
@@ -36,7 +35,7 @@ namespace App
                     clientSocket.NoDelay = true;
 
                     int clientId = Interlocked.Increment(ref nextClientId);
-                    clients[clientId] = clientSocket;
+                    clients[clientId] = new(clientSocket);
                     Console.WriteLine($"클라이언트 연결됨. ID: {clientId} ({clientSocket.RemoteEndPoint})");
 
                     _ = Task.Run(() => HandleClientAsync(clientId, cts.Token));
@@ -56,7 +55,7 @@ namespace App
                 try { listener?.Close(); } catch { }
                 foreach (var kv in clients.Values)
                 {
-                    SafeClose(kv);
+                    SafeClose(kv.socket);
                 }
 
                 Console.WriteLine("서버를 종료합니다.");
@@ -72,7 +71,7 @@ namespace App
 
         private static async Task HandleClientAsync(int clientId, CancellationToken token)
         {
-            if (!clients.TryGetValue(clientId, out Socket clientSocket))
+            if (!clients.TryGetValue(clientId, out ClientInfo clientSocket))
                 return;
             byte[] lengthBuf = new byte[4];
 
@@ -133,7 +132,7 @@ namespace App
                 var target = kv.Value;
                 try
                 {
-                    await target.SendLock.WaitAsync(token);
+
                 }
                 catch (OperationCanceledException)
                 {
@@ -150,7 +149,7 @@ namespace App
                 }
                 finally
                 {
-                    //try { target.SendLock.Realse(); } catch { }
+
                 }
             }
         }
