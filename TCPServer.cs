@@ -1,8 +1,16 @@
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
+using System.Text;
+
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
+
+using System.Buffers.Binary;
+using System.Collections.Concurrent;
+using Microsoft.VisualBasic;
+using System.ComponentModel.DataAnnotations;
+using System.Diagnostics;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Formats.Asn1;
 
 namespace App
 {
@@ -28,6 +36,7 @@ namespace App
                 var endPoint = new IPEndPoint(IPAddress.Any, port);
                 listener.Bind(endPoint);
                 listener.Listen(100);
+                Console.WriteLine("서버 시작");
 
                 while (!cts.IsCancellationRequested)
                 {
@@ -79,7 +88,7 @@ namespace App
             {
                 while (!token.IsCancellationRequested)
                 {
-                    int read = await ReadExactAsync(clientSocket, lengthBuf, 4, token);
+                    int read = await ReadExactAsync(clientSocket.socket, lengthBuf, 4, token);
                     if (read == 0) break;
 
                     int payloadLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBuf);
@@ -89,16 +98,28 @@ namespace App
                     }
 
                     byte[] payload = new byte[payloadLength];
-                    read = await ReadExactAsync(clientSocket, payload, payloadLength, token);
+                    read = await ReadExactAsync(clientSocket.socket, payload, payloadLength, token);
                     if (read == 0) break;
 
                     string msg = Encoding.UTF8.GetString(payload);
                     Console.WriteLine($"[RECV] {clientId}: {msg}");
+
+                    string wrapped = $"{clientId}: {msg}";
+                    byte[] broadcastPayload = Encoding.UTF8.GetBytes(wrapped);
+
+                    await BroadcastAsync(clientId, broadcastPayload, token, false);
                 }
             }
             catch (Exception e)
             {
                 Console.WriteLine($"[Error] {e.Message}");
+            }
+            finally
+            {
+                if (clients.TryRemove(clientId, out ClientInfo removed))
+                {
+                    SafeClose(removed.socket);
+                }
             }
 
         }
@@ -108,20 +129,21 @@ namespace App
             int sent = 0;
             while (sent < buffer.Length)
             {
-                int n = socket.SendAsync(
-                    new ArraySegment<byte>(buffer, sent, buffer - sent),
+                int n = await socket.SendAsync(
+                    new ArraySegment<byte>(buffer, sent, buffer.Length - sent),
                     SocketFlags.None,
                     token);
 
-                if (n == 0) return 0;
+                if (n == 0) return;
                 sent += n;
             }
         }
 
         private static async Task BroadcastAsync(int senderId, byte[] payload, CancellationToken token, bool includeSender)
         {
-            byte[] header = new byte[4];
-            BinaryPrimitives.WriteInt32LittleEndian(header, payload.Length);
+            byte[] packet = new byte[4 + payload.Length];
+            BinaryPrimitives.WriteInt32LittleEndian(packet, payload.Length);
+            Buffer.BlockCopy(payload, 0, packet, 4, payload.Length);
 
             foreach (var kv in clients)
             {
@@ -130,26 +152,23 @@ namespace App
                     continue;
 
                 var target = kv.Value;
+
                 try
                 {
-
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"[Error] {e.Message}");
-                    if (clients.TryRemove(targetId, out var removed))
+                    await target.sendLock.WaitAsync(token);
+                    try
                     {
-                        SafeClose(removed);
-                        Console.WriteLine($"브로드 캐스트 중 제거됨. ({targetId})")
+                        await SendAllAsync(target.socket, packet, token);
+                    }
+                    finally
+                    {
+                        target.sendLock.Release();
                     }
                 }
-                finally
+                catch
                 {
-
+                    if (clients.TryRemove(targetId, out var removed))
+                        SafeClose(removed.socket);
                 }
             }
         }

@@ -24,8 +24,9 @@ namespace App
                 Console.WriteLine($"서버 연결됨 ({serverIp} : {port})");
 
                 CancellationToken cts = connectionCts.Token;
-                var sendTask = SendLoop(socket, cts);
-                var receiveTask = ReceiveLoop(socket, cts);
+                var sendTask = Task.Run(() => SendLoop(socket, cts));
+                var receiveTask = Task.Run(() => ReceiveLoop(socket, cts));
+
                 await Task.WhenAny(sendTask, receiveTask);
                 connectionCts.Cancel();
                 await Task.WhenAll(sendTask, receiveTask);

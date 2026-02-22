@@ -1,18 +1,17 @@
 using System.Net;
 using System.Net.Sockets;
-using System.Net.WebSockets;
 
 namespace App
 {
     public sealed class ClientInfo
     {
         public readonly Socket socket;
-        public readonly Semaphore semaphore;
+        public readonly SemaphoreSlim sendLock;
 
         public ClientInfo(Socket socket)
         {
             this.socket = socket;
-            this.semaphore = new(1, 1);
+            this.sendLock = new(1, 1);
         }
     }
 }
