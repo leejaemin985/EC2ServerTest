@@ -27,20 +27,39 @@ public class GameServer
         _cts = new CancellationTokenSource();
         _serverClock.Start();
 
-        // TCP 서버 시작
-        _tcpListener = new TcpListener(IPAddress.Any, _tcpPort);
-        _tcpListener.Start();
-        Console.WriteLine($"[TCP] 서버 시작 - 포트 {_tcpPort}");
+        Console.WriteLine($"[서버] 시작 시도... TCP={_tcpPort}, UDP={_udpPort}");
 
-        // UDP 서버 시작
-        _udpServer = new UdpClient(_udpPort);
-        Console.WriteLine($"[UDP] 서버 시작 - 포트 {_udpPort}");
+        try
+        {
+            // TCP 서버 시작
+            _tcpListener = new TcpListener(IPAddress.Any, _tcpPort);
+            _tcpListener.Start();
+            Console.WriteLine($"[TCP] 서버 시작 성공 - 0.0.0.0:{_tcpPort}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TCP] 서버 시작 실패: {ex.Message}");
+            throw;
+        }
+
+        try
+        {
+            // UDP 서버 시작
+            _udpServer = new UdpClient(_udpPort);
+            Console.WriteLine($"[UDP] 서버 시작 성공 - 0.0.0.0:{_udpPort}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[UDP] 서버 시작 실패: {ex.Message}");
+            throw;
+        }
 
         // TCP 접속 수락 + UDP 수신을 동시에 실행
         var tcpTask = AcceptTcpClientsAsync(_cts.Token);
         var udpTask = ReceiveUdpAsync(_cts.Token);
 
-        Console.WriteLine("서버 가동 중... 'q' 입력으로 종료");
+        Console.WriteLine($"[서버] 가동 중 — TCP/UDP 수신 대기 중...");
+        Console.WriteLine($"[서버] 시간: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
         await Task.WhenAll(tcpTask, udpTask);
     }
@@ -56,15 +75,17 @@ public class GameServer
     /// <summary>TCP 클라이언트 접속 수락 루프</summary>
     private async Task AcceptTcpClientsAsync(CancellationToken ct)
     {
+        Console.WriteLine("[TCP] 클라이언트 접속 대기 시작...");
         while (!ct.IsCancellationRequested)
         {
             try
             {
                 var tcpClient = await _tcpListener!.AcceptTcpClientAsync(ct);
-                int playerId = _clients.AddClient(tcpClient);
-
                 var remoteEp = tcpClient.Client.RemoteEndPoint as IPEndPoint;
-                Console.WriteLine($"[TCP] 플레이어 {playerId} 접속 ({remoteEp})");
+                Console.WriteLine($"[TCP] 새 연결 수신! from {remoteEp} ({DateTime.Now:HH:mm:ss})");
+
+                int playerId = _clients.AddClient(tcpClient);
+                Console.WriteLine($"[TCP] 플레이어 {playerId} 등록 완료 (현재 접속: {_clients.Count}명)");
 
                 // 접속한 클라이언트에게 ID 알려주기
                 await _clients.SendTcpAsync(playerId, PacketSerializer.WriteConnected(playerId));
@@ -89,7 +110,8 @@ public class GameServer
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
-                Console.WriteLine($"[TCP] 접속 수락 오류: {ex.Message}");
+                Console.WriteLine($"[TCP] 접속 수락 오류: {ex.GetType().Name}: {ex.Message}");
+                Console.WriteLine($"[TCP] StackTrace: {ex.StackTrace}");
             }
         }
     }
@@ -122,11 +144,11 @@ public class GameServer
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"[TCP] 플레이어 {playerId} 수신 오류: {ex.Message}");
+            Console.WriteLine($"[TCP] 플레이어 {playerId} 수신 오류: {ex.GetType().Name}: {ex.Message}");
         }
 
         // 연결 해제 처리
-        Console.WriteLine($"[TCP] 플레이어 {playerId} 접속 해제");
+        Console.WriteLine($"[TCP] 플레이어 {playerId} 접속 해제 ({DateTime.Now:HH:mm:ss})");
         _clients.RemoveClient(playerId);
         await _clients.BroadcastTcpAsync(PacketSerializer.WritePlayerLeft(playerId));
     }
