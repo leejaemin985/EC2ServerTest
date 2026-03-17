@@ -80,15 +80,15 @@ public static class PacketSerializer
     }
 
     /// <summary>
-    /// 서버 → 클라이언트 Position 패킷 (서버 타임스탬프 포함):
-    /// [Type(1)][PlayerId(4)][ServerTimeMs(4)][X(4)][Y(4)][Z(4)] = 21 bytes
+    /// 서버 → 클라이언트 Position 패킷 (틱 번호 포함):
+    /// [Type(1)][PlayerId(4)][Tick(4)][X(4)][Y(4)][Z(4)] = 21 bytes
     /// </summary>
-    public static byte[] WritePositionServer(int playerId, int serverTimeMs, float x, float y, float z)
+    public static byte[] WritePositionServer(int playerId, int tick, float x, float y, float z)
     {
         var buf = new byte[21];
         buf[0] = (byte)PacketType.Position;
         BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(1), playerId);
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), serverTimeMs);
+        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), tick);
         BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), x);
         BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(13), y);
         BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(17), z);
@@ -96,26 +96,28 @@ public static class PacketSerializer
     }
 
     /// <summary>
-    /// 클라이언트 → 서버 Input 패킷:
-    /// [Type(1)][PlayerId(4)][H(4)][V(4)] = 13 bytes
+    /// 클라이언트 → 서버 Input 패킷 (틱 번호 포함):
+    /// [Type(1)][PlayerId(4)][Tick(4)][H(4)][V(4)] = 17 bytes
     /// </summary>
-    public static byte[] WriteInput(int playerId, float h, float v)
+    public static byte[] WriteInput(int playerId, int tick, float h, float v)
     {
-        var buf = new byte[13];
+        var buf = new byte[17];
         buf[0] = (byte)PacketType.Input;
         BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(1), playerId);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(5), h);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), v);
+        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), tick);
+        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), h);
+        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(13), v);
         return buf;
     }
 
-    /// <summary>Input 패킷 파싱</summary>
-    public static (int playerId, float h, float v) ReadInput(ReadOnlySpan<byte> data)
+    /// <summary>Input 패킷 파싱 (틱 포함)</summary>
+    public static (int playerId, int tick, float h, float v) ReadInput(ReadOnlySpan<byte> data)
     {
         int id = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1));
-        float h = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(5));
-        float v = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(9));
-        return (id, h, v);
+        int tick = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5));
+        float h = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(9));
+        float v = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(13));
+        return (id, tick, h, v);
     }
 
     /// <summary>TCP 수신 버퍼에서 패킷 타입 읽기</summary>

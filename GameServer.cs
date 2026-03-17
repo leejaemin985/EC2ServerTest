@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 
@@ -10,7 +11,16 @@ public class GameServer
     private TcpListener? _tcpListener;
     private UdpClient? _udpServer;
     private CancellationTokenSource? _cts;
-    private readonly System.Diagnostics.Stopwatch _serverClock = new();
+
+    // 틱 기반 게임 루프
+    private const int TickRate = 30;
+    private const float FixedDt = 1f / TickRate;
+    private const float MoveSpeed = 5f;
+    private int _currentTick;
+
+    // 플레이어별 상태
+    private readonly ConcurrentDictionary<int, float[]> _positions = new();
+    private readonly ConcurrentDictionary<int, (int tick, float h, float v)> _latestInputs = new();
 
     public GameServer(int tcpPort = 7777, int udpPort = 7778)
     {
@@ -21,13 +31,11 @@ public class GameServer
     public async Task StartAsync()
     {
         _cts = new CancellationTokenSource();
-        _serverClock.Start();
 
         Console.WriteLine($"[서버] 시작 시도... TCP={_tcpPort}, UDP={_udpPort}");
 
         try
         {
-            // TCP 서버 시작
             _tcpListener = new TcpListener(IPAddress.Any, _tcpPort);
             _tcpListener.Start();
             Console.WriteLine($"[TCP] 서버 시작 성공 - 0.0.0.0:{_tcpPort}");
@@ -40,7 +48,6 @@ public class GameServer
 
         try
         {
-            // UDP 서버 시작
             _udpServer = new UdpClient(_udpPort);
             Console.WriteLine($"[UDP] 서버 시작 성공 - 0.0.0.0:{_udpPort}");
         }
@@ -50,14 +57,14 @@ public class GameServer
             throw;
         }
 
-        // TCP 접속 수락 + UDP 수신을 동시에 실행
         var tcpTask = AcceptTcpClientsAsync(_cts.Token);
         var udpTask = ReceiveUdpAsync(_cts.Token);
+        var tickTask = GameTickLoop(_cts.Token);
 
-        Console.WriteLine($"[서버] 가동 중 — TCP/UDP 수신 대기 중...");
+        Console.WriteLine($"[서버] 가동 중 — {TickRate}Hz 틱 루프 시작");
         Console.WriteLine($"[서버] 시간: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
 
-        await Task.WhenAll(tcpTask, udpTask);
+        await Task.WhenAll(tcpTask, udpTask, tickTask);
     }
 
     public void Stop()
@@ -68,7 +75,55 @@ public class GameServer
         Console.WriteLine("서버 종료됨");
     }
 
-    /// <summary>TCP 클라이언트 접속 수락 루프</summary>
+    // ── 틱 기반 게임 루프 ──
+
+    private async Task GameTickLoop(CancellationToken ct)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        long nextTickMs = 0;
+
+        while (!ct.IsCancellationRequested)
+        {
+            long now = sw.ElapsedMilliseconds;
+            if (now < nextTickMs)
+            {
+                await Task.Delay((int)(nextTickMs - now), ct);
+            }
+            nextTickMs = sw.ElapsedMilliseconds + (1000 / TickRate);
+
+            _currentTick++;
+
+            // 모든 플레이어의 최신 입력을 소비하여 위치 계산
+            foreach (var kvp in _latestInputs)
+            {
+                int playerId = kvp.Key;
+                var (tick, h, v) = kvp.Value;
+
+                if (!_positions.ContainsKey(playerId))
+                    _positions[playerId] = new float[] { 0, 0, 0 };
+
+                var pos = _positions[playerId];
+                pos[0] += h * MoveSpeed * FixedDt; // X
+                pos[2] += v * MoveSpeed * FixedDt; // Z
+            }
+
+            // 모든 플레이어 위치를 브로드캐스트 (본인 포함)
+            foreach (var kvp in _positions)
+            {
+                int playerId = kvp.Key;
+                var pos = kvp.Value;
+
+                // 해당 플레이어의 마지막 입력 틱을 응답에 포함
+                int lastInputTick = _latestInputs.TryGetValue(playerId, out var input) ? input.tick : 0;
+
+                var packet = PacketSerializer.WritePositionServer(playerId, lastInputTick, pos[0], pos[1], pos[2]);
+                _clients.BroadcastUdp(_udpServer!, packet, excludeId: -1);
+            }
+        }
+    }
+
+    // ── TCP 접속 ──
+
     private async Task AcceptTcpClientsAsync(CancellationToken ct)
     {
         Console.WriteLine("[TCP] 클라이언트 접속 대기 시작...");
@@ -83,14 +138,11 @@ public class GameServer
                 int playerId = _clients.AddClient(tcpClient);
                 Console.WriteLine($"[TCP] 플레이어 {playerId} 등록 완료 (현재 접속: {_clients.Count}명)");
 
-                // 접속한 클라이언트에게 ID 알려주기
                 await _clients.SendTcpAsync(playerId, PacketSerializer.WriteConnected(playerId));
 
-                // 기존 플레이어들에게 새 플레이어 알림
                 await _clients.BroadcastTcpAsync(
                     PacketSerializer.WritePlayerJoined(playerId), excludeId: playerId);
 
-                // 새 클라이언트에게 기존 플레이어들 알림
                 foreach (var existing in _clients.GetAllClients())
                 {
                     if (existing.PlayerId != playerId)
@@ -100,19 +152,16 @@ public class GameServer
                     }
                 }
 
-                // 이 클라이언트의 TCP 수신을 별도 태스크로 처리
                 _ = HandleTcpClientAsync(playerId, ct);
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
                 Console.WriteLine($"[TCP] 접속 수락 오류: {ex.GetType().Name}: {ex.Message}");
-                Console.WriteLine($"[TCP] StackTrace: {ex.StackTrace}");
             }
         }
     }
 
-    /// <summary>개별 TCP 클라이언트 수신 처리</summary>
     private async Task HandleTcpClientAsync(int playerId, CancellationToken ct)
     {
         var client = _clients.GetClient(playerId);
@@ -123,14 +172,12 @@ public class GameServer
         {
             while (!ct.IsCancellationRequested)
             {
-                // 길이 프리픽스(4바이트) 읽기
                 int bytesRead = await ReadExactAsync(client.Stream, buffer, 0, 4, ct);
                 if (bytesRead == 0) break;
 
                 int packetLength = BinaryPrimitives.ReadInt32LittleEndian(buffer);
                 if (packetLength <= 0 || packetLength > 1024) break;
 
-                // 페이로드 읽기
                 bytesRead = await ReadExactAsync(client.Stream, buffer, 0, packetLength, ct);
                 if (bytesRead == 0) break;
 
@@ -143,9 +190,10 @@ public class GameServer
             Console.WriteLine($"[TCP] 플레이어 {playerId} 수신 오류: {ex.GetType().Name}: {ex.Message}");
         }
 
-        // 연결 해제 처리
         Console.WriteLine($"[TCP] 플레이어 {playerId} 접속 해제 ({DateTime.Now:HH:mm:ss})");
         _clients.RemoveClient(playerId);
+        _positions.TryRemove(playerId, out _);
+        _latestInputs.TryRemove(playerId, out _);
         await _clients.BroadcastTcpAsync(PacketSerializer.WritePlayerLeft(playerId));
     }
 
@@ -154,7 +202,6 @@ public class GameServer
         switch (type)
         {
             case PacketType.UdpRegister:
-                // 클라이언트가 UDP 포트를 알려줌: [Type(1)][Port(4)]
                 int udpPort = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1));
                 var client = _clients.GetClient(playerId);
                 if (client != null)
@@ -167,7 +214,8 @@ public class GameServer
         }
     }
 
-    /// <summary>UDP 수신 루프 — 클라이언트 위치를 받아서 다른 클라이언트에게 브로드캐스트</summary>
+    // ── UDP 수신 — 입력을 버퍼에 저장만 함 ──
+
     private async Task ReceiveUdpAsync(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -180,9 +228,9 @@ public class GameServer
 
                 var packetType = (PacketType)data[0];
 
-                if (packetType == PacketType.Position && data.Length >= 17)
+                if (packetType == PacketType.Input && data.Length >= 17)
                 {
-                    var (playerId, x, y, z) = PacketSerializer.ReadPositionClient(data);
+                    var (playerId, tick, h, v) = PacketSerializer.ReadInput(data);
 
                     // UDP 엔드포인트 자동등록
                     var client = _clients.GetClient(playerId);
@@ -192,10 +240,8 @@ public class GameServer
                         Console.WriteLine($"[UDP] 플레이어 {playerId} UDP 자동등록: {result.RemoteEndPoint}");
                     }
 
-                    // 서버 타임스탬프를 붙여서 본인 제외 브로드캐스트
-                    int serverTimeMs = (int)_serverClock.ElapsedMilliseconds;
-                    var outPacket = PacketSerializer.WritePositionServer(playerId, serverTimeMs, x, y, z);
-                    _clients.BroadcastUdp(_udpServer, outPacket, excludeId: playerId);
+                    // 입력 버퍼에 저장 (틱 루프에서 소비)
+                    _latestInputs[playerId] = (tick, h, v);
                 }
             }
             catch (OperationCanceledException) { break; }
@@ -206,14 +252,13 @@ public class GameServer
         }
     }
 
-    /// <summary>스트림에서 정확히 count 바이트 읽기</summary>
     private static async Task<int> ReadExactAsync(NetworkStream stream, byte[] buffer, int offset, int count, CancellationToken ct)
     {
         int totalRead = 0;
         while (totalRead < count)
         {
             int read = await stream.ReadAsync(buffer.AsMemory(offset + totalRead, count - totalRead), ct);
-            if (read == 0) return 0; // 연결 끊김
+            if (read == 0) return 0;
             totalRead += read;
         }
         return totalRead;
