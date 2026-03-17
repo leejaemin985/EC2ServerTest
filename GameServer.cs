@@ -12,10 +12,6 @@ public class GameServer
     private CancellationTokenSource? _cts;
     private readonly System.Diagnostics.Stopwatch _serverClock = new();
 
-    // 서버 권한 이동: 플레이어별 위치 저장
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, float[]> _positions = new();
-    private const float MoveSpeed = 5f;
-
     public GameServer(int tcpPort = 7777, int udpPort = 7778)
     {
         _tcpPort = tcpPort;
@@ -171,11 +167,9 @@ public class GameServer
         }
     }
 
-    /// <summary>UDP 수신 루프 — 입력 받아서 서버에서 이동 처리 후 결과 브로드캐스트</summary>
+    /// <summary>UDP 수신 루프 — 클라이언트 위치를 받아서 다른 클라이언트에게 브로드캐스트</summary>
     private async Task ReceiveUdpAsync(CancellationToken ct)
     {
-        long lastTick = _serverClock.ElapsedMilliseconds;
-
         while (!ct.IsCancellationRequested)
         {
             try
@@ -186,9 +180,9 @@ public class GameServer
 
                 var packetType = (PacketType)data[0];
 
-                if (packetType == PacketType.Input && data.Length >= 13)
+                if (packetType == PacketType.Position && data.Length >= 17)
                 {
-                    var (playerId, h, v) = PacketSerializer.ReadInput(data);
+                    var (playerId, x, y, z) = PacketSerializer.ReadPositionClient(data);
 
                     // UDP 엔드포인트 자동등록
                     var client = _clients.GetClient(playerId);
@@ -198,23 +192,10 @@ public class GameServer
                         Console.WriteLine($"[UDP] 플레이어 {playerId} UDP 자동등록: {result.RemoteEndPoint}");
                     }
 
-                    // 서버에서 이동 처리
-                    long now = _serverClock.ElapsedMilliseconds;
-                    float dt = (now - lastTick) / 1000f;
-                    if (dt > 0.1f) dt = 0.1f; // 최대 100ms
-                    lastTick = now;
-
-                    if (!_positions.ContainsKey(playerId))
-                        _positions[playerId] = new float[] { 0, 0, 0 };
-
-                    var pos = _positions[playerId];
-                    pos[0] += h * MoveSpeed * dt; // X
-                    pos[2] += v * MoveSpeed * dt; // Z
-
-                    // 결과를 모든 클라이언트에게 전송 (본인 포함!)
-                    int serverTimeMs = (int)now;
-                    var outPacket = PacketSerializer.WritePositionServer(playerId, serverTimeMs, pos[0], pos[1], pos[2]);
-                    _clients.BroadcastUdp(_udpServer, outPacket, excludeId: -1);
+                    // 서버 타임스탬프를 붙여서 본인 제외 브로드캐스트
+                    int serverTimeMs = (int)_serverClock.ElapsedMilliseconds;
+                    var outPacket = PacketSerializer.WritePositionServer(playerId, serverTimeMs, x, y, z);
+                    _clients.BroadcastUdp(_udpServer, outPacket, excludeId: playerId);
                 }
             }
             catch (OperationCanceledException) { break; }
