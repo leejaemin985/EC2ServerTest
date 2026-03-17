@@ -15,7 +15,7 @@ public class GameServer
     // 틱 기반 게임 루프
     private const int TickRate = 30;
     private const float FixedDt = 1f / TickRate;
-    private const float MoveSpeed = 5f;
+    private const float MoveSpeed = 20f;
     private int _currentTick;
 
     // 플레이어별 상태
