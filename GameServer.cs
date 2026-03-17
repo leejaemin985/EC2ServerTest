@@ -116,7 +116,7 @@ public class GameServer
                 int lastInputTick = _latestInputs.TryGetValue(playerId, out var input) ? input.tick : 0;
 
                 var packet = PacketSerializer.WritePositionServer(playerId, lastInputTick, pos[0], pos[1], pos[2]);
-                _clients.BroadcastUdp(_udpServer!, packet, excludeId: playerId);
+                _clients.BroadcastUdp(_udpServer!, packet, excludeId: -1);
             }
 
             // 소비한 입력 제거 (안 하면 키를 떼도 계속 이동)
