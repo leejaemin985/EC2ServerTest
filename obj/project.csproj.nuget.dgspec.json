@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\USER\\Desktop\\ljm\\MyProject\\project\\project.csproj": {}
+    "C:\\Users\\USER\\Desktop\\ljm\\EC2Server\\project.csproj": {}
   },
   "projects": {
-    "C:\\Users\\USER\\Desktop\\ljm\\MyProject\\project\\project.csproj": {
+    "C:\\Users\\USER\\Desktop\\ljm\\EC2Server\\project.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\USER\\Desktop\\ljm\\MyProject\\project\\project.csproj",
+        "projectUniqueName": "C:\\Users\\USER\\Desktop\\ljm\\EC2Server\\project.csproj",
         "projectName": "project",
-        "projectPath": "C:\\Users\\USER\\Desktop\\ljm\\MyProject\\project\\project.csproj",
+        "projectPath": "C:\\Users\\USER\\Desktop\\ljm\\EC2Server\\project.csproj",
         "packagesPath": "C:\\Users\\USER\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\USER\\Desktop\\ljm\\MyProject\\project\\obj\\",
+        "outputPath": "C:\\Users\\USER\\Desktop\\ljm\\EC2Server\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
