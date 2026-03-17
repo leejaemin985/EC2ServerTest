@@ -107,18 +107,20 @@ public class GameServer
                 pos[2] += v * MoveSpeed * FixedDt; // Z
             }
 
-            // 모든 플레이어 위치를 브로드캐스트 (본인 포함)
+            // 모든 플레이어 위치를 브로드캐스트 (본인 제외 — 본인은 로컬 예측 사용)
             foreach (var kvp in _positions)
             {
                 int playerId = kvp.Key;
                 var pos = kvp.Value;
 
-                // 해당 플레이어의 마지막 입력 틱을 응답에 포함
                 int lastInputTick = _latestInputs.TryGetValue(playerId, out var input) ? input.tick : 0;
 
                 var packet = PacketSerializer.WritePositionServer(playerId, lastInputTick, pos[0], pos[1], pos[2]);
-                _clients.BroadcastUdp(_udpServer!, packet, excludeId: -1);
+                _clients.BroadcastUdp(_udpServer!, packet, excludeId: playerId);
             }
+
+            // 소비한 입력 제거 (안 하면 키를 떼도 계속 이동)
+            _latestInputs.Clear();
         }
     }
 
