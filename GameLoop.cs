@@ -1,0 +1,177 @@
+using System.Diagnostics;
+using System.Reflection;
+
+/// <summary>
+/// 틱 기반 게임 루프 엔진.
+/// NetworkObject들의 생명주기를 관리하고, 고정 간격(TickRate)으로 Update를 호출한다.
+/// </summary>
+public class GameLoop
+{
+    // ── 설정 ──
+
+    public int TickRate { get; }
+    public float DeltaTime { get; }
+
+    /// <summary>매 틱 Update 이후 호출되는 콜백. Transform 브로드캐스트 등에 사용.</summary>
+    public Action? OnPostTick;
+
+    // ── 상태 ──
+
+    public int CurrentTick { get; private set; }
+    public bool IsRunning { get; private set; }
+
+    // ── 오브젝트 관리 ──
+
+    private uint _nextNetId;
+    private readonly Dictionary<uint, NetworkObject> _objects = new();
+    private readonly List<NetworkObject> _pendingAdd = new();
+    private readonly List<NetworkObject> _pendingDestroy = new();
+
+    // 순회 중 안전하게 접근하기 위한 스냅샷
+    private readonly List<NetworkObject> _updateList = new();
+
+    public GameLoop(int tickRate = 30)
+    {
+        TickRate = tickRate;
+        DeltaTime = 1f / tickRate;
+    }
+
+    // ── NetworkObject 등록 / 조회 ──
+
+    /// <summary>
+    /// NetworkObject를 생성하여 루프에 등록한다.
+    /// NetId를 자동 부여하고, 다음 틱에 Awake → Start 순으로 호출된다.
+    /// </summary>
+    public T Spawn<T>(NetworkTransform? transform = null) where T : NetworkObject
+    {
+        uint netId = ++_nextNetId;
+        var obj = (T)Activator.CreateInstance(
+            typeof(T),
+            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+            null,
+            new object?[] { netId, this, transform },
+            null)!;
+        _pendingAdd.Add(obj);
+        return obj;
+    }
+
+    /// <summary>NetId로 오브젝트를 찾는다.</summary>
+    public NetworkObject? Find(uint netId)
+    {
+        _objects.TryGetValue(netId, out var obj);
+        return obj;
+    }
+
+    /// <summary>특정 타입의 오브젝트를 모두 찾는다.</summary>
+    public IEnumerable<T> FindAll<T>() where T : NetworkObject
+    {
+        foreach (var obj in _objects.Values)
+        {
+            if (obj is T typed) yield return typed;
+        }
+    }
+
+    // ── 메인 루프 ──
+
+    /// <summary>게임 루프를 시작한다. CancellationToken으로 정지할 수 있다.</summary>
+    public async Task RunAsync(CancellationToken ct)
+    {
+        IsRunning = true;
+        var sw = Stopwatch.StartNew();
+        long nextTickMs = 0;
+
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                long now = sw.ElapsedMilliseconds;
+                if (now < nextTickMs)
+                {
+                    await Task.Delay((int)(nextTickMs - now), ct);
+                }
+                nextTickMs = sw.ElapsedMilliseconds + (1000 / TickRate);
+
+                Tick();
+            }
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            // 종료 시 모든 오브젝트 정리
+            foreach (var obj in _objects.Values)
+            {
+                if (!obj.IsDestroyed)
+                {
+                    obj.IsDestroyed = true;
+                    obj.OnDestroy();
+                }
+            }
+            _objects.Clear();
+            IsRunning = false;
+        }
+    }
+
+    /// <summary>단일 틱 실행. 테스트나 수동 제어 시 직접 호출할 수 있다.</summary>
+    public void Tick()
+    {
+        CurrentTick++;
+
+        // 1) 신규 오브젝트 추가 — Awake 호출
+        if (_pendingAdd.Count > 0)
+        {
+            foreach (var obj in _pendingAdd)
+            {
+                _objects[obj.NetId] = obj;
+                if (!obj.IsAwaked)
+                {
+                    obj.IsAwaked = true;
+                    obj.Awake();
+                }
+            }
+            _pendingAdd.Clear();
+        }
+
+        // 2) 스냅샷 구성 — Start & Update
+        _updateList.Clear();
+        foreach (var obj in _objects.Values)
+        {
+            if (!obj.IsDestroyed)
+                _updateList.Add(obj);
+        }
+
+        foreach (var obj in _updateList)
+        {
+            if (!obj.Active) continue;
+
+            // Start (최초 1회, Active일 때만)
+            if (!obj.IsStarted)
+            {
+                obj.IsStarted = true;
+                obj.Start();
+            }
+
+            // Update
+            if (!obj.IsDestroyed)
+            {
+                obj.Update(DeltaTime);
+            }
+        }
+
+        // 3) PostTick 콜백
+        OnPostTick?.Invoke();
+
+        // 4) 파괴 예약된 오브젝트 정리
+        _pendingDestroy.Clear();
+        foreach (var obj in _objects.Values)
+        {
+            if (obj.IsDestroyed)
+                _pendingDestroy.Add(obj);
+        }
+
+        foreach (var obj in _pendingDestroy)
+        {
+            obj.OnDestroy();
+            _objects.Remove(obj.NetId);
+        }
+    }
+}

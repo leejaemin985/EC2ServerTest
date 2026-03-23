@@ -1,128 +1,186 @@
 using System.Buffers.Binary;
-using System.Numerics;
 
-public enum PacketType : byte
+/// <summary>
+/// 패킷 전송 채널.
+/// </summary>
+public enum PacketChannel : byte
 {
-    // TCP 패킷
-    Connected = 1,       // 서버 → 클라이언트: 플레이어 ID 할당
-    PlayerJoined = 2,    // 서버 → 클라이언트: 다른 플레이어 접속
-    PlayerLeft = 3,      // 서버 → 클라이언트: 다른 플레이어 퇴장
-    UdpRegister = 4,     // 클라이언트 → 서버: UDP 엔드포인트 등록
-
-    // UDP 패킷
-    Position = 10,       // 서버 → 클라이언트: 위치 데이터
-    Input = 11,          // 클라이언트 → 서버: 입력 데이터
+    Tcp,
+    Udp,
 }
 
 /// <summary>
-/// 패킷 직렬화/역직렬화 유틸리티.
-/// 모든 패킷 구조: [PacketType(1)] [Payload(...)]
+/// 패킷 타입 식별자.
+/// 각 패킷 클래스가 고유한 타입을 가진다.
 /// </summary>
-public static class PacketSerializer
+public enum PacketType : ushort
 {
-    // ── TCP 패킷 쓰기 (길이 프리픽스 포함: [Length(4)][PacketType(1)][Payload]) ──
+    // 연결 / 세션 (0 ~ 999)
+    Connected = 1,
+    Disconnected = 2,
 
-    /// <summary>Connected 패킷: 할당된 플레이어 ID 전송</summary>
-    public static byte[] WriteConnected(int playerId)
+    // 게임 오브젝트 (1000 ~ 1999)
+    Spawn = 1000,
+    Despawn = 1001,
+    Transform = 1002,
+
+    // 입력 (2000 ~ 2999)
+    Input = 2000,
+
+    // 전투 / 액션 (3000 ~ 3999)
+
+    // 상태 / 동기화 (4000 ~ 4999)
+
+    // 채팅 / 소셜 (5000 ~ 5999)
+
+    // 시스템 / 관리 (6000 ~ 6999)
+}
+
+/// <summary>
+/// 모든 패킷의 베이스 클래스.
+/// 직렬화/역직렬화 인터페이스를 정의한다.
+/// </summary>
+public abstract class Packet
+{
+    /// <summary>패킷 타입 식별자</summary>
+    public abstract PacketType Type { get; }
+
+    /// <summary>이 패킷이 사용할 채널</summary>
+    public abstract PacketChannel Channel { get; }
+
+    /// <summary>이 패킷이 발생한 시점의 틱</summary>
+    public int Tick { get; set; }
+
+    /// <summary>페이로드를 바이트 배열로 직렬화한다. (타입/틱 헤더 제외)</summary>
+    public abstract void Serialize(PacketWriter writer);
+
+    /// <summary>바이트 배열에서 페이로드를 역직렬화한다. (타입/틱 헤더 제외)</summary>
+    public abstract void Deserialize(PacketReader reader);
+}
+
+/// <summary>
+/// 바이너리 쓰기 유틸리티. 패킷 직렬화에 사용.
+/// </summary>
+public class PacketWriter
+{
+    private byte[] _buffer;
+    private int _pos;
+
+    public PacketWriter(int capacity = 256)
     {
-        var buf = new byte[4 + 1 + 4]; // length + type + playerId
-        BinaryPrimitives.WriteInt32LittleEndian(buf, 5);
-        buf[4] = (byte)PacketType.Connected;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), playerId);
-        return buf;
+        _buffer = new byte[capacity];
+        _pos = 0;
     }
 
-    /// <summary>PlayerJoined 패킷</summary>
-    public static byte[] WritePlayerJoined(int playerId)
+    public int Length => _pos;
+
+    private void EnsureCapacity(int additional)
     {
-        var buf = new byte[4 + 1 + 4];
-        BinaryPrimitives.WriteInt32LittleEndian(buf, 5);
-        buf[4] = (byte)PacketType.PlayerJoined;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), playerId);
-        return buf;
+        if (_pos + additional > _buffer.Length)
+            Array.Resize(ref _buffer, Math.Max(_buffer.Length * 2, _pos + additional));
     }
 
-    /// <summary>PlayerLeft 패킷</summary>
-    public static byte[] WritePlayerLeft(int playerId)
+    public void WriteByte(byte value)
     {
-        var buf = new byte[4 + 1 + 4];
-        BinaryPrimitives.WriteInt32LittleEndian(buf, 5);
-        buf[4] = (byte)PacketType.PlayerLeft;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), playerId);
-        return buf;
+        EnsureCapacity(1);
+        _buffer[_pos++] = value;
     }
 
-    // ── UDP 패킷 (길이 프리픽스 없음) ──
-
-    /// <summary>
-    /// 클라이언트 → 서버 Position 패킷 (타임스탬프 없음):
-    /// [Type(1)][PlayerId(4)][X(4)][Y(4)][Z(4)] = 17 bytes
-    /// </summary>
-    public static byte[] WritePositionClient(int playerId, float x, float y, float z)
+    public void WriteUShort(ushort value)
     {
-        var buf = new byte[17];
-        buf[0] = (byte)PacketType.Position;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(1), playerId);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(5), x);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), y);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(13), z);
-        return buf;
+        EnsureCapacity(2);
+        BinaryPrimitives.WriteUInt16LittleEndian(_buffer.AsSpan(_pos), value);
+        _pos += 2;
     }
 
-    /// <summary>클라이언트→서버 패킷 파싱 (17바이트)</summary>
-    public static (int playerId, float x, float y, float z) ReadPositionClient(ReadOnlySpan<byte> data)
+    public void WriteInt(int value)
     {
-        int id = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1));
-        float x = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(5));
-        float y = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(9));
-        float z = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(13));
-        return (id, x, y, z);
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteInt32LittleEndian(_buffer.AsSpan(_pos), value);
+        _pos += 4;
     }
 
-    /// <summary>
-    /// 서버 → 클라이언트 Position 패킷 (틱 번호 포함):
-    /// [Type(1)][PlayerId(4)][Tick(4)][X(4)][Y(4)][Z(4)] = 21 bytes
-    /// </summary>
-    public static byte[] WritePositionServer(int playerId, int tick, float x, float y, float z)
+    public void WriteUInt(uint value)
     {
-        var buf = new byte[21];
-        buf[0] = (byte)PacketType.Position;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(1), playerId);
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), tick);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), x);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(13), y);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(17), z);
-        return buf;
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteUInt32LittleEndian(_buffer.AsSpan(_pos), value);
+        _pos += 4;
     }
 
-    /// <summary>
-    /// 클라이언트 → 서버 Input 패킷 (틱 번호 포함):
-    /// [Type(1)][PlayerId(4)][Tick(4)][H(4)][V(4)] = 17 bytes
-    /// </summary>
-    public static byte[] WriteInput(int playerId, int tick, float h, float v)
+    public void WriteFloat(float value)
     {
-        var buf = new byte[17];
-        buf[0] = (byte)PacketType.Input;
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(1), playerId);
-        BinaryPrimitives.WriteInt32LittleEndian(buf.AsSpan(5), tick);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(9), h);
-        BinaryPrimitives.WriteSingleLittleEndian(buf.AsSpan(13), v);
-        return buf;
+        EnsureCapacity(4);
+        BinaryPrimitives.WriteSingleLittleEndian(_buffer.AsSpan(_pos), value);
+        _pos += 4;
     }
 
-    /// <summary>Input 패킷 파싱 (틱 포함)</summary>
-    public static (int playerId, int tick, float h, float v) ReadInput(ReadOnlySpan<byte> data)
+    public void WriteString(string value)
     {
-        int id = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(1));
-        int tick = BinaryPrimitives.ReadInt32LittleEndian(data.Slice(5));
-        float h = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(9));
-        float v = BinaryPrimitives.ReadSingleLittleEndian(data.Slice(13));
-        return (id, tick, h, v);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(value);
+        WriteUShort((ushort)bytes.Length);
+        EnsureCapacity(bytes.Length);
+        bytes.CopyTo(_buffer.AsSpan(_pos));
+        _pos += bytes.Length;
     }
 
-    /// <summary>TCP 수신 버퍼에서 패킷 타입 읽기</summary>
-    public static PacketType ReadTcpPacketType(ReadOnlySpan<byte> payload)
+    /// <summary>패킷 헤더(타입) + 페이로드를 포함한 최종 바이트 배열을 반환한다.</summary>
+    public byte[] ToArray() => _buffer.AsSpan(0, _pos).ToArray();
+
+    /// <summary>버퍼를 초기화한다.</summary>
+    public void Reset() => _pos = 0;
+}
+
+/// <summary>
+/// 바이너리 읽기 유틸리티. 패킷 역직렬화에 사용.
+/// </summary>
+public class PacketReader
+{
+    private readonly ReadOnlyMemory<byte> _buffer;
+    private int _pos;
+
+    public PacketReader(ReadOnlyMemory<byte> buffer)
     {
-        return (PacketType)payload[0];
+        _buffer = buffer;
+        _pos = 0;
+    }
+
+    public int Remaining => _buffer.Length - _pos;
+
+    public byte ReadByte() => _buffer.Span[_pos++];
+
+    public ushort ReadUShort()
+    {
+        var value = BinaryPrimitives.ReadUInt16LittleEndian(_buffer.Span.Slice(_pos));
+        _pos += 2;
+        return value;
+    }
+
+    public int ReadInt()
+    {
+        var value = BinaryPrimitives.ReadInt32LittleEndian(_buffer.Span.Slice(_pos));
+        _pos += 4;
+        return value;
+    }
+
+    public uint ReadUInt()
+    {
+        var value = BinaryPrimitives.ReadUInt32LittleEndian(_buffer.Span.Slice(_pos));
+        _pos += 4;
+        return value;
+    }
+
+    public float ReadFloat()
+    {
+        var value = BinaryPrimitives.ReadSingleLittleEndian(_buffer.Span.Slice(_pos));
+        _pos += 4;
+        return value;
+    }
+
+    public string ReadString()
+    {
+        ushort length = ReadUShort();
+        var value = System.Text.Encoding.UTF8.GetString(_buffer.Span.Slice(_pos, length));
+        _pos += length;
+        return value;
     }
 }
