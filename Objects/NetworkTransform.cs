@@ -23,6 +23,10 @@ public struct Vec3
     public static Vec3 operator *(float s, Vec3 v) => v * s;
 
     public override string ToString() => $"({X:F2}, {Y:F2}, {Z:F2})";
+
+    // LJMCollision 변환
+    public static implicit operator LJMCollision.Vec3(Vec3 v) => new(v.X, v.Y, v.Z);
+    public static implicit operator Vec3(LJMCollision.Vec3 v) => new(v.X, v.Y, v.Z);
 }
 
 /// <summary>
