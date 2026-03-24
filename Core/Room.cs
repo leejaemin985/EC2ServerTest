@@ -93,17 +93,18 @@ public class Room
 
     void HandleInput(Session session, byte[] payload)
     {
-        if (payload.Length < 8) return;
+        if (payload.Length < 12) return;
 
         var reader = new PacketReader(payload);
         float h = reader.ReadFloat();
         float v = reader.ReadFloat();
+        float yaw = reader.ReadFloat();
 
         if (session.PlayerNetId is not { } netId) return;
 
         var obj = GameLoop.Find(netId);
         if (obj is Player player)
-            player.SetInput(h, v);
+            player.SetInput(h, v, yaw);
     }
 
     // ── Transform 브로드캐스트 ──

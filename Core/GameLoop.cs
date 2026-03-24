@@ -23,6 +23,7 @@ public class GameLoop
     // ── 오브젝트 관리 ──
 
     private uint _nextNetId;
+    private readonly object _lock = new();
     private readonly Dictionary<uint, NetworkObject> _objects = new();
     private readonly List<NetworkObject> _pendingAdd = new();
     private readonly List<NetworkObject> _pendingDestroy = new();
@@ -44,30 +45,51 @@ public class GameLoop
     /// </summary>
     public T Spawn<T>(NetworkTransform? transform = null) where T : NetworkObject
     {
-        uint netId = ++_nextNetId;
-        var obj = (T)Activator.CreateInstance(
-            typeof(T),
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
-            null,
-            new object?[] { netId, this, transform },
-            null)!;
-        _pendingAdd.Add(obj);
-        return obj;
+        lock (_lock)
+        {
+            uint netId = ++_nextNetId;
+            var obj = (T)Activator.CreateInstance(
+                typeof(T),
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                null,
+                new object?[] { netId, this, transform },
+                null)!;
+            _pendingAdd.Add(obj);
+            return obj;
+        }
     }
 
     /// <summary>NetId로 오브젝트를 찾는다.</summary>
     public NetworkObject? Find(uint netId)
     {
-        _objects.TryGetValue(netId, out var obj);
-        return obj;
+        lock (_lock)
+        {
+            if (_objects.TryGetValue(netId, out var obj))
+                return obj;
+
+            foreach (var pending in _pendingAdd)
+            {
+                if (pending.NetId == netId) return pending;
+            }
+            return null;
+        }
     }
 
     /// <summary>특정 타입의 오브젝트를 모두 찾는다.</summary>
-    public IEnumerable<T> FindAll<T>() where T : NetworkObject
+    public List<T> FindAll<T>() where T : NetworkObject
     {
-        foreach (var obj in _objects.Values)
+        lock (_lock)
         {
-            if (obj is T typed) yield return typed;
+            var result = new List<T>();
+            foreach (var obj in _objects.Values)
+            {
+                if (obj is T typed) result.Add(typed);
+            }
+            foreach (var obj in _pendingAdd)
+            {
+                if (obj is T typed) result.Add(typed);
+            }
+            return result;
         }
     }
 
@@ -116,27 +138,30 @@ public class GameLoop
     {
         CurrentTick++;
 
-        // 1) 신규 오브젝트 추가 — Awake 호출
-        if (_pendingAdd.Count > 0)
+        lock (_lock)
         {
-            foreach (var obj in _pendingAdd)
+            // 1) 신규 오브젝트 추가 — Awake 호출
+            if (_pendingAdd.Count > 0)
             {
-                _objects[obj.NetId] = obj;
-                if (!obj.IsAwaked)
+                foreach (var obj in _pendingAdd)
                 {
-                    obj.IsAwaked = true;
-                    obj.Awake();
+                    _objects[obj.NetId] = obj;
+                    if (!obj.IsAwaked)
+                    {
+                        obj.IsAwaked = true;
+                        obj.Awake();
+                    }
                 }
+                _pendingAdd.Clear();
             }
-            _pendingAdd.Clear();
-        }
 
-        // 2) 스냅샷 구성 — Start & Update
-        _updateList.Clear();
-        foreach (var obj in _objects.Values)
-        {
-            if (!obj.IsDestroyed)
-                _updateList.Add(obj);
+            // 2) 스냅샷 구성 — Start & Update
+            _updateList.Clear();
+            foreach (var obj in _objects.Values)
+            {
+                if (!obj.IsDestroyed)
+                    _updateList.Add(obj);
+            }
         }
 
         foreach (var obj in _updateList)
@@ -161,17 +186,20 @@ public class GameLoop
         OnPostTick?.Invoke();
 
         // 4) 파괴 예약된 오브젝트 정리
-        _pendingDestroy.Clear();
-        foreach (var obj in _objects.Values)
+        lock (_lock)
         {
-            if (obj.IsDestroyed)
-                _pendingDestroy.Add(obj);
-        }
+            _pendingDestroy.Clear();
+            foreach (var obj in _objects.Values)
+            {
+                if (obj.IsDestroyed)
+                    _pendingDestroy.Add(obj);
+            }
 
-        foreach (var obj in _pendingDestroy)
-        {
-            obj.OnDestroy();
-            _objects.Remove(obj.NetId);
+            foreach (var obj in _pendingDestroy)
+            {
+                obj.OnDestroy();
+                _objects.Remove(obj.NetId);
+            }
         }
     }
 }

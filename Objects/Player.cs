@@ -16,28 +16,40 @@ public class Player : NetworkObject
 
     float _inputH;
     float _inputV;
+    float _yaw;
     float _velocityY;
     bool _grounded;
 
     protected Player(uint netId, GameLoop loop, NetworkTransform? transform = null)
         : base(netId, loop, transform) { }
 
-    public void SetInput(float h, float v)
+    public void SetInput(float h, float v, float yaw)
     {
         _inputH = h;
         _inputV = v;
+        _yaw = yaw;
     }
 
     protected internal override void Update(float deltaTime)
     {
+        // yaw를 Rotation에 반영
+        float rad = _yaw * MathF.PI / 180f;
+        float sinY = MathF.Sin(rad * 0.5f);
+        float cosY = MathF.Cos(rad * 0.5f);
+        Rotation = new Quat(0f, sinY, 0f, cosY);
+
         Vec3 pos = Position;
         LJMCollision.Vec3 center = new(pos.X, pos.Y + CapsuleHeight * 0.5f, pos.Z);
 
-        // 수평 이동
+        // 수평 이동 (yaw 기준 방향 변환)
+        float forward = _inputV * MoveSpeed * deltaTime;
+        float right = _inputH * MoveSpeed * deltaTime;
+        float sin = MathF.Sin(rad);
+        float cos = MathF.Cos(rad);
         LJMCollision.Vec3 velocity = new(
-            _inputH * MoveSpeed * deltaTime,
+            right * cos + forward * sin,
             0f,
-            _inputV * MoveSpeed * deltaTime);
+            -right * sin + forward * cos);
 
         // 중력
         if (!_grounded)
@@ -81,7 +93,5 @@ public class Player : NetworkObject
             Position = pos;
         }
 
-        _inputH = 0f;
-        _inputV = 0f;
     }
 }
