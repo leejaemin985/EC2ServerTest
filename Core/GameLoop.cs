@@ -43,7 +43,7 @@ public class GameLoop
     /// NetworkObject를 생성하여 루프에 등록한다.
     /// NetId를 자동 부여하고, 다음 틱에 Awake → Start 순으로 호출된다.
     /// </summary>
-    public T Spawn<T>(NetworkTransform? transform = null) where T : NetworkObject
+    public T Spawn<T>(Transform? transform = null) where T : NetworkObject
     {
         lock (_lock)
         {

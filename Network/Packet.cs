@@ -28,6 +28,8 @@ public enum PacketType : ushort
     Input = 2000,
 
     // 전투 / 액션 (3000 ~ 3999)
+    Shoot = 3000,
+    Hit = 3001,
 
     // 상태 / 동기화 (4000 ~ 4999)
 

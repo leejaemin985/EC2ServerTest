@@ -1,3 +1,5 @@
+using LJMCollision;
+
 /// <summary>
 /// 서버 측 게임 오브젝트의 베이스 클래스.
 /// 유니티의 MonoBehaviour처럼 Awake/Start/Update/OnDestroy 라이프사이클을 제공한다.
@@ -20,15 +22,15 @@ public abstract class NetworkObject
     // ── Transform ──
 
     /// <summary>공간 정보 (위치 + 회전)</summary>
-    public NetworkTransform Transform;
+    public Transform Transform;
 
     // ── 생성자 ──
 
-    protected NetworkObject(uint netId, GameLoop loop, NetworkTransform? transform = null)
+    protected NetworkObject(uint netId, GameLoop loop, Transform? transform = null)
     {
         NetId = netId;
         Loop = loop;
-        Transform = transform ?? new NetworkTransform();
+        Transform = transform ?? new Transform();
     }
 
     /// <summary>위치 바로가기</summary>

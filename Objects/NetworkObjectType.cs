@@ -6,4 +6,5 @@ public enum NetworkObjectType : ushort
 {
     None = 0,
     Player = 1,
+    Projectile = 2,
 }

@@ -9,6 +9,7 @@ public class Room
     public GameLoop GameLoop { get; }
     public SessionManager SessionManager { get; }
     public CollisionWorld CollisionWorld { get; }
+    public PhysicsWorld PhysicsWorld { get; }
 
     const int HeaderSize = 8;
 
@@ -20,6 +21,7 @@ public class Room
         GameLoop = new GameLoop(tickRate);
         SessionManager = new SessionManager();
         CollisionWorld = new CollisionWorld();
+        PhysicsWorld = new PhysicsWorld { StaticWorld = CollisionWorld };
         _udpServer = udpServer;
 
         if (mapPath != null && System.IO.File.Exists(mapPath))
@@ -29,7 +31,11 @@ public class Room
             Console.WriteLine($"[Room {Id}] Map loaded: {CollisionWorld.BoxCount} boxes");
         }
 
-        GameLoop.OnPostTick = BroadcastTransforms;
+        GameLoop.OnPostTick = () =>
+        {
+            PhysicsWorld.Step(GameLoop.DeltaTime);
+            BroadcastTransforms();
+        };
     }
 
     // ── 플레이어 입장 / 퇴장 ──
@@ -40,8 +46,20 @@ public class Room
 
         var player = GameLoop.Spawn<Player>();
         player.OwnerId = session.PlayerId;
-        player.World = CollisionWorld;
         session.PlayerNetId = player.NetId;
+
+        // 물리 바디 부착
+        var body = new PhysicsBody(
+            player.Transform, BodyType.Dynamic,
+            new CapsuleShape(player.CapsuleRadius, player.CapsuleHeight),
+            CollisionLayer.Player)
+        {
+            Mass = 70f,
+            UseGravity = true,
+            Drag = 0.85f,
+        };
+        player.Body = body;
+        PhysicsWorld.Add(body);
 
         // 자기 스폰을 먼저 전송 (클라이언트가 PlayerId를 인식하도록)
         var spawnData = PacketToBytes(MakeSpawnPacket(player));
@@ -66,6 +84,8 @@ public class Room
         if (session.PlayerNetId is { } netId)
         {
             var obj = GameLoop.Find(netId);
+            if (obj is Player player && player.Body != null)
+                PhysicsWorld.Remove(player.Body);
             obj?.Destroy();
 
             var despawn = new DespawnPacket { NetId = netId };
@@ -93,18 +113,20 @@ public class Room
 
     void HandleInput(Session session, byte[] payload)
     {
-        if (payload.Length < 12) return;
+        if (payload.Length < 16) return;
 
         var reader = new PacketReader(payload);
         float h = reader.ReadFloat();
         float v = reader.ReadFloat();
         float yaw = reader.ReadFloat();
+        float pitch = reader.ReadFloat();
+        bool jump = payload.Length >= 17 && payload[16] != 0;
 
         if (session.PlayerNetId is not { } netId) return;
 
         var obj = GameLoop.Find(netId);
         if (obj is Player player)
-            player.SetInput(h, v, yaw);
+            player.SetInput(h, v, yaw, pitch, jump);
     }
 
     // ── Transform 브로드캐스트 ──
