@@ -5,6 +5,6 @@ public class BasicProjectileData : ProjectileData
 
     public override float Speed => 50f;
     public override float Radius => 0.15f;
-    public override float MaxLifetime => 3f;
+    public override float MaxLifetime => 5f;
     public override float SpawnOffset => 1.0f;
 }

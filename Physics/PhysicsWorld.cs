@@ -8,6 +8,9 @@ public partial class PhysicsWorld
 {
     public const float DefaultGravity = PhysicsData.Gravity;
 
+    /// <summary>Drag 감쇠 스케일. Drag^(dt * scale)로 적용. 값이 클수록 감쇠가 빠름.</summary>
+    const float DragTimeScale = 10f;
+
     readonly List<PhysicsBody> _bodies = new();
     readonly List<PhysicsBody> _pendingAdd = new();
     readonly List<PhysicsBody> _pendingRemove = new();
@@ -54,7 +57,7 @@ public partial class PhysicsWorld
 
             if (body.Drag < 1f)
             {
-                float drag = MathF.Pow(body.Drag, deltaTime * 10f);
+                float drag = MathF.Pow(body.Drag, deltaTime * DragTimeScale);
                 body.Velocity = new Vec3(
                     body.Velocity.X * drag,
                     body.Velocity.Y,
