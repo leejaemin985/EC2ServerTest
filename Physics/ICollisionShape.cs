@@ -11,7 +11,7 @@ public interface ICollisionShape
     /// <summary>발 위치에서 center까지의 Y 오프셋</summary>
     float BottomOffset { get; }
 
-    /// <summary>GroundCheck용 수평 반경</summary>
+    /// <summary>Substep 분할 기준이 되는 수평 반경</summary>
     float HorizontalRadius { get; }
 
     /// <summary>feet 위치를 center 위치로 변환</summary>
@@ -31,6 +31,34 @@ public enum ShapeType : byte
     Box,
 }
 
+/// <summary>Shape 공통 유틸리티</summary>
+static class ShapeUtils
+{
+    /// <summary>substep MoveAndSlide. 이동량이 stepSize보다 크면 자동 분할.</summary>
+    /// <param name="moveFunc">center와 stepVelocity를 받아 단일 스텝 MoveAndSlide 실행</param>
+    public static MoveResult SubstepMoveAndSlide(
+        Vec3 center, Vec3 displacement, float stepSize,
+        Func<Vec3, Vec3, MoveResult> moveFunc)
+    {
+        float dist = displacement.Magnitude;
+        int steps = Math.Max(1, (int)MathF.Ceiling(dist / stepSize));
+        Vec3 stepVel = displacement * (1f / steps);
+        bool grounded = false;
+        bool hitCeiling = false;
+        Vec3 groundNormal = Vec3.Up;
+
+        for (int s = 0; s < steps; s++)
+        {
+            var result = moveFunc(center, stepVel);
+            center = result.Position;
+            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
+            if (result.HitCeiling) hitCeiling = true;
+        }
+
+        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
+    }
+}
+
 /// <summary>구체 형태 (투사체 등)</summary>
 public class SphereShape : ICollisionShape
 {
@@ -47,25 +75,8 @@ public class SphereShape : ICollisionShape
         => new(feetPosition.X, feetPosition.Y + Radius, feetPosition.Z);
 
     public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
-    {
-        float dist = displacement.Magnitude;
-        int steps = Math.Max(1, (int)MathF.Ceiling(dist / Radius));
-        Vec3 stepVel = displacement * (1f / steps);
-        Vec3 center = ToWorldCenter(feetPosition);
-        bool grounded = false;
-        bool hitCeiling = false;
-        Vec3 groundNormal = Vec3.Up;
-
-        for (int s = 0; s < steps; s++)
-        {
-            var result = world.MoveAndSlide(new Sphere(center, Radius), stepVel, maxSlopeAngle);
-            center = result.Position;
-            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
-            if (result.HitCeiling) hitCeiling = true;
-        }
-
-        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
-    }
+        => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement, Radius,
+            (center, stepVel) => world.MoveAndSlide(new Sphere(center, Radius), stepVel, maxSlopeAngle));
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsSphere(ray, new Sphere(ToWorldCenter(feetPosition), Radius));
@@ -96,25 +107,8 @@ public class CapsuleShape : ICollisionShape
         => new(feetPosition.X, feetPosition.Y + Height * 0.5f, feetPosition.Z);
 
     public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
-    {
-        float dist = displacement.Magnitude;
-        int steps = Math.Max(1, (int)MathF.Ceiling(dist / Radius));
-        Vec3 stepVel = displacement * (1f / steps);
-        Vec3 center = ToWorldCenter(feetPosition);
-        bool grounded = false;
-        bool hitCeiling = false;
-        Vec3 groundNormal = Vec3.Up;
-
-        for (int s = 0; s < steps; s++)
-        {
-            var result = world.MoveAndSlide(new Capsule(center, Radius, Height), stepVel, maxSlopeAngle);
-            center = result.Position;
-            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
-            if (result.HitCeiling) hitCeiling = true;
-        }
-
-        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
-    }
+        => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement, Radius,
+            (center, stepVel) => world.MoveAndSlide(new Capsule(center, Radius, Height), stepVel, maxSlopeAngle));
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsCapsule(ray, ToCapsule(feetPosition));
@@ -137,26 +131,9 @@ public class BoxShape : ICollisionShape
         => new(feetPosition.X, feetPosition.Y + HalfSize.Y, feetPosition.Z);
 
     public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
-    {
-        float dist = displacement.Magnitude;
-        float minSize = MathF.Min(HalfSize.X, MathF.Min(HalfSize.Y, HalfSize.Z));
-        int steps = Math.Max(1, (int)MathF.Ceiling(dist / minSize));
-        Vec3 stepVel = displacement * (1f / steps);
-        Vec3 center = ToWorldCenter(feetPosition);
-        bool grounded = false;
-        bool hitCeiling = false;
-        Vec3 groundNormal = Vec3.Up;
-
-        for (int s = 0; s < steps; s++)
-        {
-            var result = world.MoveAndSlide(new OBB(center, HalfSize, rotation), stepVel, maxSlopeAngle);
-            center = result.Position;
-            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
-            if (result.HitCeiling) hitCeiling = true;
-        }
-
-        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
-    }
+        => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement,
+            MathF.Min(HalfSize.X, MathF.Min(HalfSize.Y, HalfSize.Z)),
+            (center, stepVel) => world.MoveAndSlide(new OBB(center, HalfSize, rotation), stepVel, maxSlopeAngle));
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsOBB(ray, new OBB(ToWorldCenter(feetPosition), HalfSize, rotation));

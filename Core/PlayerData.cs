@@ -7,7 +7,7 @@ public static class PlayerData
 
     // ── 이동 ──
     public const float MoveSpeed = 10f;
-    public const float JumpForce = 28f;
+    public const float JumpForce = 20f;
     public const float MaxSlopeAngle = 45f;
 
     // ── 물리 ──

@@ -55,8 +55,11 @@ public class PhysicsBody
 
     // ── 물리 속성 (Dynamic 전용) ──
 
-    /// <summary>질량 (kg). 넉백 계산에 사용. 0이면 무한 질량(밀리지 않음).</summary>
+    /// <summary>질량 (kg). 넉백 계산에 사용. 음수면 무한 질량(밀리지 않음). 0이면 충돌 판정만, 밀어냄 없음.</summary>
     public float Mass { get; set; } = 70f;
+
+    /// <summary>무한 질량 여부</summary>
+    public bool IsInfiniteMass => Mass < 0f;
 
     /// <summary>현재 속도 (m/s). 매 틱 Position에 적용된다.</summary>
     public Vec3 Velocity { get; set; }
@@ -87,7 +90,7 @@ public class PhysicsBody
     public void AddImpulse(Vec3 impulse)
     {
         if (BodyType != BodyType.Dynamic) return;
-        if (Mass <= 0f) return;
+        if (Mass <= 0f) return; // 0: 밀어냄 없음, 음수: 무한질량
         Velocity += impulse * (1f / Mass);
     }
 

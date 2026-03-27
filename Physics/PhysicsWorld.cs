@@ -44,7 +44,7 @@ public partial class PhysicsWorld
             if (body.BodyType != BodyType.Dynamic) continue;
             if (!body.Active) continue;
 
-            if (body.UseGravity && !body.Grounded)
+            if (body.UseGravity)
             {
                 body.Velocity = new Vec3(
                     body.Velocity.X,
@@ -114,24 +114,24 @@ public partial class PhysicsWorld
                 var result = TestShapePair(a, b);
                 if (!result.Hit) continue;
 
+                // 질량 0: 충돌 판정만, 밀어냄 없음
+                if (a.Mass == 0f || b.Mass == 0f) continue;
+
                 // TODO: 수평 방향으로만 밀어냄 — 플레이어끼리는 맞지만, 수직 충돌이 필요한 조합에선 잘못된 결과. 플래그로 분리 필요.
                 Vec3 normal = new Vec3(result.Normal.X, 0f, result.Normal.Z);
                 float len = normal.Magnitude;
                 if (len < MathUtils.Epsilon) normal = Vec3.Right;
                 else normal = normal * (1f / len);
 
-                // 질량 비율로 분배 (Mass 0 = 무한질량 = 안 밀림)
-                float massA = a.BodyType == BodyType.Static ? 0f : a.Mass;
-                float massB = b.BodyType == BodyType.Static ? 0f : b.Mass;
-                float totalInvMass = (massA > 0f ? 1f / massA : 0f) + (massB > 0f ? 1f / massB : 0f);
+                // 질량 비율로 분배 (음수 = 무한질량 = 안 밀림)
+                float invA = (a.BodyType != BodyType.Static && !a.IsInfiniteMass) ? 1f / a.Mass : 0f;
+                float invB = (b.BodyType != BodyType.Static && !b.IsInfiniteMass) ? 1f / b.Mass : 0f;
+                float totalInvMass = invA + invB;
 
-                if (totalInvMass <= 0f) continue; // 둘 다 무한질량이면 스킵
+                if (totalInvMass <= 0f) continue;
 
-                float ratioA = massA > 0f ? (1f / massA) / totalInvMass : 0f;
-                float ratioB = massB > 0f ? (1f / massB) / totalInvMass : 0f;
-
-                a.Position += normal * (result.Depth * ratioA);
-                b.Position -= normal * (result.Depth * ratioB);
+                a.Position += normal * (result.Depth * (invA / totalInvMass));
+                b.Position -= normal * (result.Depth * (invB / totalInvMass));
             }
         }
     }

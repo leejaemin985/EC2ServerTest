@@ -122,7 +122,6 @@ public class Room
         float yaw = reader.ReadFloat();
         float pitch = reader.ReadFloat();
         bool jump = payload.Length >= 17 && payload[16] != 0;
-
         if (session.PlayerNetId is not { } netId) return;
 
         var obj = GameLoop.Find(netId);
