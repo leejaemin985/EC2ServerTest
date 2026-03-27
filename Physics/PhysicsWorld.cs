@@ -72,28 +72,70 @@ public partial class PhysicsWorld
 
             Vec3 displacement = body.Velocity * deltaTime;
 
-            if (StaticWorld != null)
+            if (StaticWorld == null)
             {
-                var moveResult = body.Shape.MoveAndSlide(StaticWorld, body.Position, body.Rotation, displacement, body.MaxSlopeAngle);
+                body.Position += displacement;
+                continue;
+            }
 
-                if (body.UseGravity)
-                {
-                    body.Grounded = moveResult.Grounded;
-
-                    if (moveResult.Grounded && body.Velocity.Y < 0f)
-                        body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
-
-                    if (moveResult.HitCeiling && body.Velocity.Y > 0f)
-                        body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
-                }
-
-                body.Position = new Vec3(moveResult.Position.X, moveResult.Position.Y - body.Shape.BottomOffset, moveResult.Position.Z);
+            if (body.Mass == 0f)
+            {
+                // 질량 0 (투사체 등): Swept Capsule OverlapTest → 콜백으로 응답 위임
+                MoveProjectileBody(body, displacement);
             }
             else
             {
-                body.Position += displacement;
+                // 일반 바디: MoveAndSlide (슬라이드 응답)
+                MoveSlideBody(body, displacement);
             }
         }
+    }
+
+    /// <summary>일반 바디: MoveAndSlide + Grounded/Ceiling 처리</summary>
+    void MoveSlideBody(PhysicsBody body, Vec3 displacement)
+    {
+        var moveResult = body.Shape.MoveAndSlide(StaticWorld, body.Position, body.Rotation, displacement, body.MaxSlopeAngle);
+
+        if (body.UseGravity)
+        {
+            body.Grounded = moveResult.Grounded;
+
+            if (moveResult.Grounded && body.Velocity.Y < 0f)
+                body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
+
+            if (moveResult.HitCeiling && body.Velocity.Y > 0f)
+                body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
+        }
+
+        body.Position = new Vec3(moveResult.Position.X, moveResult.Position.Y - body.Shape.BottomOffset, moveResult.Position.Z);
+    }
+
+    /// <summary>투사체(Mass=0): Substep OverlapTest로 이동하며 충돌 즉시 콜백</summary>
+    void MoveProjectileBody(PhysicsBody body, Vec3 displacement)
+    {
+        if (body.Shape is not SphereShape sphere) { body.Position += displacement; return; }
+
+        float dist = displacement.Magnitude;
+        int steps = Math.Max(1, (int)MathF.Ceiling(dist / sphere.Radius));
+        Vec3 stepVel = displacement * (1f / steps);
+        Vec3 center = sphere.ToWorldCenter(body.Position);
+
+        for (int s = 0; s < steps; s++)
+        {
+            var overlap = StaticWorld.OverlapTest(new Sphere(center + stepVel, sphere.Radius), Vec3.Zero);
+            body.LastStaticOverlap = overlap;
+
+            if (overlap.HasCollision)
+            {
+                body.OnStaticCollision?.Invoke(body, overlap);
+                return; // 콜백에서 파괴 등 처리, 더 이상 이동하지 않음
+            }
+
+            center = center + stepVel;
+        }
+
+        // 모든 스텝 통과 → 최종 위치 반영
+        body.Position = new Vec3(center.X, center.Y - sphere.BottomOffset, center.Z);
     }
 
     void ResolveDynamicCollisions()
@@ -114,8 +156,17 @@ public partial class PhysicsWorld
                 var result = TestShapePair(a, b);
                 if (!result.Hit) continue;
 
-                // 질량 0: 충돌 판정만, 밀어냄 없음
-                if (a.Mass == 0f || b.Mass == 0f) continue;
+                // 질량 0: 밀어냄 없이 콜백만 호출
+                if (a.Mass == 0f || b.Mass == 0f)
+                {
+                    a.OnDynamicCollision?.Invoke(a, b, result);
+                    b.OnDynamicCollision?.Invoke(b, a, new CollisionResult
+                    {
+                        Hit = true, ContactPoint = result.ContactPoint,
+                        Normal = -result.Normal, Depth = result.Depth
+                    });
+                    continue;
+                }
 
                 // TODO: 수평 방향으로만 밀어냄 — 플레이어끼리는 맞지만, 수직 충돌이 필요한 조합에선 잘못된 결과. 플래그로 분리 필요.
                 Vec3 normal = new Vec3(result.Normal.X, 0f, result.Normal.Z);

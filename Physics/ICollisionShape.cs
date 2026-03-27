@@ -20,6 +20,9 @@ public interface ICollisionShape
     /// <summary>맵 OBB와 충돌하며 이동. 최종 center 위치와 바닥 정보를 반환.</summary>
     MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f);
 
+    /// <summary>맵 OBB와 겹침 검사만. 밀어냄 없이 충돌 정보만 반환.</summary>
+    OverlapResult OverlapTest(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement);
+
     /// <summary>이 Shape에 대한 레이캐스트</summary>
     RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation);
 }
@@ -45,7 +48,9 @@ static class ShapeUtils
         Vec3 stepVel = displacement * (1f / steps);
         bool grounded = false;
         bool hitCeiling = false;
+        bool hitWall = false;
         Vec3 groundNormal = Vec3.Up;
+        Vec3 wallNormal = Vec3.Zero;
 
         for (int s = 0; s < steps; s++)
         {
@@ -53,9 +58,14 @@ static class ShapeUtils
             center = result.Position;
             if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
             if (result.HitCeiling) hitCeiling = true;
+            if (result.HitWall) { hitWall = true; wallNormal = result.WallNormal; }
         }
 
-        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
+        return new MoveResult
+        {
+            Position = center, Grounded = grounded, GroundNormal = groundNormal,
+            HitCeiling = hitCeiling, HitWall = hitWall, WallNormal = wallNormal
+        };
     }
 }
 
@@ -78,6 +88,9 @@ public class SphereShape : ICollisionShape
         => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement, Radius,
             (center, stepVel) => world.MoveAndSlide(new Sphere(center, Radius), stepVel, maxSlopeAngle));
 
+    public OverlapResult OverlapTest(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
+        => world.OverlapTest(new Sphere(ToWorldCenter(feetPosition), Radius), displacement);
+
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsSphere(ray, new Sphere(ToWorldCenter(feetPosition), Radius));
 }
@@ -98,17 +111,23 @@ public class CapsuleShape : ICollisionShape
     }
 
     public Capsule ToCapsule(Vec3 feetPosition)
-    {
-        Vec3 center = new(feetPosition.X, feetPosition.Y + Height * 0.5f, feetPosition.Z);
-        return new Capsule(center, Radius, Height);
-    }
+        => new(ToWorldCenter(feetPosition), Radius, Height);
+
+    public Capsule ToCapsule(Vec3 feetPosition, Quat rotation)
+        => new(ToWorldCenter(feetPosition), Radius, Height, rotation.Rotate(Vec3.Up));
 
     public Vec3 ToWorldCenter(Vec3 feetPosition)
         => new(feetPosition.X, feetPosition.Y + Height * 0.5f, feetPosition.Z);
 
     public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
-        => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement, Radius,
-            (center, stepVel) => world.MoveAndSlide(new Capsule(center, Radius, Height), stepVel, maxSlopeAngle));
+    {
+        Vec3 dir = rotation.Rotate(Vec3.Up);
+        return ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement, Radius,
+            (center, stepVel) => world.MoveAndSlide(new Capsule(center, Radius, Height, dir), stepVel, maxSlopeAngle));
+    }
+
+    public OverlapResult OverlapTest(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
+        => world.OverlapTest(new Capsule(ToWorldCenter(feetPosition), Radius, Height, rotation.Rotate(Vec3.Up)), displacement);
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsCapsule(ray, ToCapsule(feetPosition));
@@ -134,6 +153,9 @@ public class BoxShape : ICollisionShape
         => ShapeUtils.SubstepMoveAndSlide(ToWorldCenter(feetPosition), displacement,
             MathF.Min(HalfSize.X, MathF.Min(HalfSize.Y, HalfSize.Z)),
             (center, stepVel) => world.MoveAndSlide(new OBB(center, HalfSize, rotation), stepVel, maxSlopeAngle));
+
+    public OverlapResult OverlapTest(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
+        => world.OverlapTest(new OBB(ToWorldCenter(feetPosition), HalfSize, rotation), displacement);
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsOBB(ray, new OBB(ToWorldCenter(feetPosition), HalfSize, rotation));

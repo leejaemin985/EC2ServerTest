@@ -73,8 +73,20 @@ public class PhysicsBody
     /// <summary>등반 가능한 최대 경사 각도 (도). 이 각도를 초과하면 미끄러진다.</summary>
     public float MaxSlopeAngle { get; set; } = 45f;
 
-    /// <summary>바닥에 닿아 있는지 여부. 중력 바디의 맵 충돌 시 PhysicsWorld가 갱신한다.</summary>
+    /// <summary>바닥에 닿아 있는지 여부. 맵 충돌 시 PhysicsWorld가 갱신한다.</summary>
     public bool Grounded { get; set; }
+
+    /// <summary>직전 틱의 맵 충돌 결과.</summary>
+    public OverlapResult LastStaticOverlap { get; set; }
+
+    /// <summary>직전 틱의 동적 바디 충돌 결과 목록.</summary>
+    public List<(PhysicsBody Other, CollisionResult Result)> LastDynamicCollisions { get; } = new();
+
+    /// <summary>맵 충돌 후 콜백. PhysicsWorld.MoveAndCollide에서 호출.</summary>
+    public Action<PhysicsBody, OverlapResult>? OnStaticCollision { get; set; }
+
+    /// <summary>동적 바디 충돌 후 콜백. PhysicsWorld.ResolveDynamicCollisions에서 호출.</summary>
+    public Action<PhysicsBody, PhysicsBody, CollisionResult>? OnDynamicCollision { get; set; }
 
     public PhysicsBody(Transform transform, BodyType bodyType, ICollisionShape shape, CollisionLayer layer)
     {

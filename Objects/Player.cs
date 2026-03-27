@@ -19,6 +19,12 @@ public class Player : NetworkObject
     public Vec3 CapsuleCenter =>
         new(Position.X, Position.Y + CapsuleHeight * 0.5f, Position.Z);
 
+    /// <summary>눈(카메라) 위치. CapsuleCenter + EyeOffset.</summary>
+    public Vec3 EyePosition =>
+        new(CapsuleCenter.X + PlayerData.EyeOffsetX,
+            CapsuleCenter.Y + PlayerData.EyeOffsetY,
+            CapsuleCenter.Z + PlayerData.EyeOffsetZ);
+
     protected Player(uint netId, GameLoop loop, Transform? transform = null)
         : base(netId, loop, transform) { }
 
