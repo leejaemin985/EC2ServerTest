@@ -6,7 +6,7 @@ using LJMCollision;
 /// </summary>
 public partial class PhysicsWorld
 {
-    public const float DefaultGravity = -30f;
+    public const float DefaultGravity = PhysicsData.Gravity;
 
     readonly List<PhysicsBody> _bodies = new();
     readonly List<PhysicsBody> _pendingAdd = new();
@@ -44,7 +44,7 @@ public partial class PhysicsWorld
             if (body.BodyType != BodyType.Dynamic) continue;
             if (!body.Active) continue;
 
-            if (body.UseGravity)
+            if (body.UseGravity && !body.Grounded)
             {
                 body.Velocity = new Vec3(
                     body.Velocity.X,
@@ -74,48 +74,20 @@ public partial class PhysicsWorld
 
             if (StaticWorld != null)
             {
-                Vec3 newCenter = body.Shape.MoveAndSlide(StaticWorld, body.Position, body.Rotation, displacement);
+                var moveResult = body.Shape.MoveAndSlide(StaticWorld, body.Position, body.Rotation, displacement, body.MaxSlopeAngle);
 
                 if (body.UseGravity)
                 {
-                    float bottomOffset = body.Shape.BottomOffset;
-                    float checkRadius = body.Shape.HorizontalRadius;
-                    float feetY = newCenter.Y - bottomOffset;
+                    body.Grounded = moveResult.Grounded;
 
-                    if (StaticWorld.GroundCheck(new Vec3(newCenter.X, feetY + 0.1f, newCenter.Z), checkRadius, out float groundY, out var groundNormal))
-                    {
-                        // 경사 각도 계산 (Normal과 Up의 각도)
-                        float slopeAngle = MathF.Acos(MathF.Min(groundNormal.Y, 1f)) * (180f / MathF.PI);
-                        bool walkable = slopeAngle <= body.MaxSlopeAngle;
+                    if (moveResult.Grounded && body.Velocity.Y < 0f)
+                        body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
 
-                        if (feetY <= groundY + 0.05f)
-                        {
-                            if (walkable)
-                            {
-                                newCenter = new Vec3(newCenter.X, groundY + bottomOffset, newCenter.Z);
-                                body.Grounded = true;
-
-                                if (body.Velocity.Y < 0f)
-                                    body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
-                            }
-                            else
-                            {
-                                // 경사가 너무 가파름 — 미끄러짐
-                                body.Grounded = false;
-                            }
-                        }
-                        else
-                        {
-                            body.Grounded = false;
-                        }
-                    }
-                    else
-                    {
-                        body.Grounded = false;
-                    }
+                    if (moveResult.HitCeiling && body.Velocity.Y > 0f)
+                        body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
                 }
 
-                body.Position = new Vec3(newCenter.X, newCenter.Y - body.Shape.BottomOffset, newCenter.Z);
+                body.Position = new Vec3(moveResult.Position.X, moveResult.Position.Y - body.Shape.BottomOffset, moveResult.Position.Z);
             }
             else
             {

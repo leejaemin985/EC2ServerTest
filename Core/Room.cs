@@ -54,9 +54,10 @@ public class Room
             new CapsuleShape(player.CapsuleRadius, player.CapsuleHeight),
             CollisionLayer.Player)
         {
-            Mass = 70f,
+            Mass = PlayerData.Mass,
             UseGravity = true,
-            Drag = 0.85f,
+            Drag = PlayerData.Drag,
+            MaxSlopeAngle = PlayerData.MaxSlopeAngle,
         };
         player.Body = body;
         PhysicsWorld.Add(body);

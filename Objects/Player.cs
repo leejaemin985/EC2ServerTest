@@ -4,10 +4,10 @@ public class Player : NetworkObject
 {
     public override NetworkObjectType ObjectType => NetworkObjectType.Player;
 
-    public float MoveSpeed { get; set; } = 5f;
-    public float CapsuleRadius { get; set; } = 0.5f;
-    public float CapsuleHeight { get; set; } = 1.8f;
-    public float JumpForce { get; set; } = 14f;
+    public float MoveSpeed { get; set; } = PlayerData.MoveSpeed;
+    public float CapsuleRadius { get; set; } = PlayerData.CapsuleRadius;
+    public float CapsuleHeight { get; set; } = PlayerData.CapsuleHeight;
+    public float JumpForce { get; set; } = PlayerData.JumpForce;
 
     public PhysicsBody? Body { get; set; }
 
@@ -46,15 +46,7 @@ public class Player : NetworkObject
         float moveZ = -h * sin + v * cos;
         Vec3 inputVelocity = new Vec3(moveX, 0f, moveZ) * MoveSpeed;
 
-        if (Grounded)
-        {
-            Body.Velocity = new Vec3(inputVelocity.X, Body.Velocity.Y, inputVelocity.Z);
-            AirMoveVelocity = inputVelocity;
-        }
-        else
-        {
-            Body.Velocity = new Vec3(AirMoveVelocity.X, Body.Velocity.Y, AirMoveVelocity.Z);
-        }
+        Body.Velocity = new Vec3(inputVelocity.X, Body.Velocity.Y, inputVelocity.Z);
     }
 
     protected internal override void Update(float deltaTime)

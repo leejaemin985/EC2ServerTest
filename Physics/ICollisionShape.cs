@@ -17,8 +17,8 @@ public interface ICollisionShape
     /// <summary>feet 위치를 center 위치로 변환</summary>
     Vec3 ToWorldCenter(Vec3 feetPosition);
 
-    /// <summary>맵 OBB와 충돌하며 이동. 최종 center 위치를 반환.</summary>
-    Vec3 MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement);
+    /// <summary>맵 OBB와 충돌하며 이동. 최종 center 위치와 바닥 정보를 반환.</summary>
+    MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f);
 
     /// <summary>이 Shape에 대한 레이캐스트</summary>
     RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation);
@@ -46,8 +46,26 @@ public class SphereShape : ICollisionShape
     public Vec3 ToWorldCenter(Vec3 feetPosition)
         => new(feetPosition.X, feetPosition.Y + Radius, feetPosition.Z);
 
-    public Vec3 MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
-        => world.MoveAndSlide(new Sphere(ToWorldCenter(feetPosition), Radius), displacement);
+    public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
+    {
+        float dist = displacement.Magnitude;
+        int steps = Math.Max(1, (int)MathF.Ceiling(dist / Radius));
+        Vec3 stepVel = displacement * (1f / steps);
+        Vec3 center = ToWorldCenter(feetPosition);
+        bool grounded = false;
+        bool hitCeiling = false;
+        Vec3 groundNormal = Vec3.Up;
+
+        for (int s = 0; s < steps; s++)
+        {
+            var result = world.MoveAndSlide(new Sphere(center, Radius), stepVel, maxSlopeAngle);
+            center = result.Position;
+            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
+            if (result.HitCeiling) hitCeiling = true;
+        }
+
+        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
+    }
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsSphere(ray, new Sphere(ToWorldCenter(feetPosition), Radius));
@@ -77,8 +95,26 @@ public class CapsuleShape : ICollisionShape
     public Vec3 ToWorldCenter(Vec3 feetPosition)
         => new(feetPosition.X, feetPosition.Y + Height * 0.5f, feetPosition.Z);
 
-    public Vec3 MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
-        => world.MoveAndSlide(new Capsule(ToWorldCenter(feetPosition), Radius, Height), displacement);
+    public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
+    {
+        float dist = displacement.Magnitude;
+        int steps = Math.Max(1, (int)MathF.Ceiling(dist / Radius));
+        Vec3 stepVel = displacement * (1f / steps);
+        Vec3 center = ToWorldCenter(feetPosition);
+        bool grounded = false;
+        bool hitCeiling = false;
+        Vec3 groundNormal = Vec3.Up;
+
+        for (int s = 0; s < steps; s++)
+        {
+            var result = world.MoveAndSlide(new Capsule(center, Radius, Height), stepVel, maxSlopeAngle);
+            center = result.Position;
+            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
+            if (result.HitCeiling) hitCeiling = true;
+        }
+
+        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
+    }
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsCapsule(ray, ToCapsule(feetPosition));
@@ -100,8 +136,27 @@ public class BoxShape : ICollisionShape
     public Vec3 ToWorldCenter(Vec3 feetPosition)
         => new(feetPosition.X, feetPosition.Y + HalfSize.Y, feetPosition.Z);
 
-    public Vec3 MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement)
-        => world.MoveAndSlide(new OBB(ToWorldCenter(feetPosition), HalfSize, rotation), displacement);
+    public MoveResult MoveAndSlide(CollisionWorld world, Vec3 feetPosition, Quat rotation, Vec3 displacement, float maxSlopeAngle = 45f)
+    {
+        float dist = displacement.Magnitude;
+        float minSize = MathF.Min(HalfSize.X, MathF.Min(HalfSize.Y, HalfSize.Z));
+        int steps = Math.Max(1, (int)MathF.Ceiling(dist / minSize));
+        Vec3 stepVel = displacement * (1f / steps);
+        Vec3 center = ToWorldCenter(feetPosition);
+        bool grounded = false;
+        bool hitCeiling = false;
+        Vec3 groundNormal = Vec3.Up;
+
+        for (int s = 0; s < steps; s++)
+        {
+            var result = world.MoveAndSlide(new OBB(center, HalfSize, rotation), stepVel, maxSlopeAngle);
+            center = result.Position;
+            if (result.Grounded) { grounded = true; groundNormal = result.GroundNormal; }
+            if (result.HitCeiling) hitCeiling = true;
+        }
+
+        return new MoveResult { Position = center, Grounded = grounded, GroundNormal = groundNormal, HitCeiling = hitCeiling };
+    }
 
     public RaycastResult Raycast(Ray ray, Vec3 feetPosition, Quat rotation)
         => CollisionDetection.RayVsOBB(ray, new OBB(ToWorldCenter(feetPosition), HalfSize, rotation));
