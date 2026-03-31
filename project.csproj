@@ -11,4 +11,9 @@
     <ProjectReference Include="..\LJMCollision\LJMCollision.csproj" />
   </ItemGroup>
 
+  <!-- 투사체 시스템 비활성화 (무기 시스템 구현 후 복원) -->
+  <ItemGroup>
+    <Compile Remove="Objects\Projectile\**" />
+  </ItemGroup>
+
 </Project>

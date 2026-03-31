@@ -1,4 +1,5 @@
 using LJMCollision;
+using InGame.Unit.Player;
 
 /// <summary>
 /// 투사체 베이스 클래스.

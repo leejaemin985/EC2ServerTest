@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using LJMCollision;
+using InGame.Unit.Player;
 
 public class Room
 {
@@ -30,8 +31,6 @@ public class Room
             CollisionWorld.Load(mapData);
             Console.WriteLine($"[Room {Id}] Map loaded: {CollisionWorld.BoxCount} boxes");
         }
-
-        PhysicsWorld.LayerMatrix.SetCollision(CollisionLayer.Projectile, CollisionLayer.Projectile, false);
 
         GameLoop.OnPostTick = () =>
         {
@@ -109,9 +108,6 @@ public class Room
             case PacketType.Input:
                 HandleInput(session, payload);
                 break;
-            case PacketType.Shoot:
-                HandleShoot(session, payload);
-                break;
             default:
                 Console.WriteLine($"[Room {Id}] Unknown packet {type} from Player {session.PlayerId}");
                 break;
@@ -133,70 +129,6 @@ public class Room
         var obj = GameLoop.Find(netId);
         if (obj is Player player)
             player.SetInput(h, v, yaw, pitch, jump);
-    }
-
-    void HandleShoot(Session session, byte[] payload)
-    {
-        if (payload.Length < 8) return;
-
-        var reader = new PacketReader(payload);
-        float yaw = reader.ReadFloat();
-        float pitch = reader.ReadFloat();
-
-        if (session.PlayerNetId is not { } netId) return;
-        var obj = GameLoop.Find(netId);
-        if (obj is not Player player || player.Body == null) return;
-
-        float yawRad = yaw * MathF.PI / 180f;
-        float pitchRad = pitch * MathF.PI / 180f;
-        float cosPitch = MathF.Cos(pitchRad);
-        var direction = new LJMCollision.Vec3(
-            cosPitch * MathF.Sin(yawRad),
-            -MathF.Sin(pitchRad),
-            cosPitch * MathF.Cos(yawRad));
-
-        var projectile = GameLoop.Spawn<BasicProjectile>();
-        projectile.OwnerId = player.OwnerId;
-        projectile.Position = player.EyePosition + direction * projectile.Data.SpawnOffset;
-        projectile.Rotation = LJMCollision.Quat.FromEuler(-pitch, yaw, 0f);
-
-        projectile.AttachPhysics(PhysicsWorld);
-        projectile.OnHit = (proj, victim) =>
-        {
-            // TODO: 무기 시스템에서 데미지 처리
-            BroadcastHit(proj.OwnerNetId, victim.Body!, proj.Body!.Transform.Position, 25f);
-        };
-        projectile.Initialize(netId, direction, this);
-
-        var spawnData = PacketToBytes(MakeSpawnPacket(projectile));
-        _ = SessionManager.BroadcastTcpAsync(spawnData);
-    }
-
-    public void DestroyProjectile(Projectile projectile)
-    {
-        if (projectile.Body != null)
-            PhysicsWorld.Remove(projectile.Body);
-        projectile.Destroy();
-
-        var despawn = new DespawnPacket { NetId = projectile.NetId };
-        _ = SessionManager.BroadcastTcpAsync(PacketToBytes(despawn));
-    }
-
-    public void BroadcastHit(uint shooterNetId, PhysicsBody victim, LJMCollision.Vec3 hitPoint, float damage)
-    {
-        if (victim.UserData is not Player victimPlayer) return;
-
-        var hitPacket = new HitPacket
-        {
-            Tick = GameLoop.CurrentTick,
-            ShooterNetId = shooterNetId,
-            VictimNetId = victimPlayer.NetId,
-            HitX = hitPoint.X,
-            HitY = hitPoint.Y,
-            HitZ = hitPoint.Z,
-            Damage = damage,
-        };
-        _ = SessionManager.BroadcastTcpAsync(PacketToBytes(hitPacket));
     }
 
     // ── Transform 브로드캐스트 ──
