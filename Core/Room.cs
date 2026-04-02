@@ -2,7 +2,9 @@ using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 using LJMCollision;
+using InGame.FSM;
 using InGame.Unit.Player;
+using InGame.Unit.Player.States;
 
 public class Room
 {
@@ -63,6 +65,22 @@ public class Room
         };
         player.Body = body;
         PhysicsWorld.Add(body);
+
+        // 상태 변경 콜백 등록
+        player.Fsm.OnStateChanged = (p, state) =>
+        {
+            if (state is PlayerState ps)
+            {
+                var packet = new PlayerStatePacket
+                {
+                    Tick = GameLoop.CurrentTick,
+                    NetId = p.NetId,
+                    State = (byte)ps.StateType,
+                };
+                var data = PacketToBytes(packet);
+                _ = SessionManager.BroadcastTcpAsync(data);
+            }
+        };
 
         // 자기 스폰을 먼저 전송 (클라이언트가 PlayerId를 인식하도록)
         var spawnData = PacketToBytes(MakeSpawnPacket(player));

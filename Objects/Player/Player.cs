@@ -1,3 +1,6 @@
+using InGame.FSM;
+using InGame.Unit.Player.States;
+
 namespace InGame.Unit.Player;
 
 public class Player : NetworkObject
@@ -12,7 +15,12 @@ public class Player : NetworkObject
     public PhysicsBody? Body { get; internal set; }
 
     internal PlayerInput Input { get; } = new();
-    private PlayerMovement _movement = null!;
+    internal PlayerMovement Movement { get; private set; } = null!;
+    internal StateMachine<Player> Fsm { get; private set; } = null!;
+
+    // 상태 인스턴스 (미리 할당)
+    internal MoveState MoveState { get; } = new();
+    internal FallState FallState { get; } = new();
 
     internal bool Grounded => Body?.Grounded ?? false;
 
@@ -26,11 +34,13 @@ public class Player : NetworkObject
 
     protected internal override void Awake()
     {
-        _movement = new PlayerMovement(this);
+        Movement = new PlayerMovement(this);
+        Fsm = new StateMachine<Player>(this);
+        Fsm.ChangeState(MoveState);
     }
 
     protected internal override void Update(float deltaTime)
     {
-        _movement.Update(deltaTime);
+        Fsm.Update(deltaTime);
     }
 }

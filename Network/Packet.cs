@@ -32,6 +32,7 @@ public enum PacketType : ushort
     Hit = 3001,
 
     // 상태 / 동기화 (4000 ~ 4999)
+    PlayerState = 4000,
 
     // 채팅 / 소셜 (5000 ~ 5999)
 

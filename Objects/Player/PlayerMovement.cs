@@ -15,25 +15,20 @@ public class PlayerMovement
         _player = player;
     }
 
-    public void Update(float deltaTime)
+    public void ApplyRotation(PlayerInput input)
     {
-        var body = _player.Body;
-        var input = _player.Input;
-        if (body == null) return;
-
-        // 회전 적용
         float rad = input.Yaw * MathF.PI / 180f;
         float sinY = MathF.Sin(rad * 0.5f);
         float cosY = MathF.Cos(rad * 0.5f);
         _player.Rotation = new Quat(0f, sinY, 0f, cosY);
+    }
 
-        // 점프
-        if (input.Jump && _player.Grounded)
-        {
-            body.Velocity = new Vec3(body.Velocity.X, _player.JumpForce, body.Velocity.Z);
-        }
+    public void ApplyMovement(PlayerInput input)
+    {
+        var body = _player.Body;
+        if (body == null) return;
 
-        // 이동 속도 계산
+        float rad = input.Yaw * MathF.PI / 180f;
         float sin = MathF.Sin(rad);
         float cos = MathF.Cos(rad);
         float moveX = input.H * cos + input.V * sin;
@@ -41,8 +36,5 @@ public class PlayerMovement
         Vec3 inputVelocity = new Vec3(moveX, 0f, moveZ) * _player.MoveSpeed;
 
         body.Velocity = new Vec3(inputVelocity.X, body.Velocity.Y, inputVelocity.Z);
-
-        // 일회성 입력 소비
-        input.ConsumeOneShot();
     }
 }

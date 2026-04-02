@@ -54,6 +54,14 @@ public class GameLoop
                 null,
                 new object?[] { netId, this, transform },
                 null)!;
+
+            // 즉시 Awake 호출하여 Spawn 직후 안전하게 접근 가능하도록
+            if (!obj.IsAwaked)
+            {
+                obj.IsAwaked = true;
+                obj.Awake();
+            }
+
             _pendingAdd.Add(obj);
             return obj;
         }
