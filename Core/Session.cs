@@ -19,9 +19,6 @@ public class Session
     /// <summary>UDP EndPoint. 첫 UDP 패킷 수신 시 매핑된다.</summary>
     public IPEndPoint? UdpEndPoint { get; set; }
 
-    /// <summary>이 세션이 소유한 플레이어 오브젝트의 NetId</summary>
-    public uint? PlayerNetId { get; set; }
-
     public Session(int playerId, TcpClient tcpClient)
     {
         PlayerId = playerId;

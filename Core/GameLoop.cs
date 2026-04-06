@@ -87,6 +87,24 @@ public class GameLoop
         }
     }
 
+    /// <summary>특정 OwnerId를 가진 오브젝트를 모두 찾는다.</summary>
+    public List<NetworkObject> FindByOwner(int ownerId)
+    {
+        lock (_lock)
+        {
+            var result = new List<NetworkObject>();
+            foreach (var obj in _objects.Values)
+            {
+                if (obj.OwnerId == ownerId) result.Add(obj);
+            }
+            foreach (var obj in _pendingAdd)
+            {
+                if (obj.OwnerId == ownerId) result.Add(obj);
+            }
+            return result;
+        }
+    }
+
     /// <summary>특정 타입의 오브젝트를 모두 찾는다.</summary>
     public List<T> FindAll<T>() where T : NetworkObject
     {

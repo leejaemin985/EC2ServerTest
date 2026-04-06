@@ -84,6 +84,19 @@ public class Player : NetworkObject
         Fsm.Update(deltaTime);
     }
 
+    protected internal override void HandlePacket(PacketType type, PacketReader reader)
+    {
+        if (type != PacketType.Input) return;
+        if (reader.Remaining < 16) return;
+
+        float h = reader.ReadFloat();
+        float v = reader.ReadFloat();
+        float yaw = reader.ReadFloat();
+        float pitch = reader.ReadFloat();
+        bool jump = reader.Remaining >= 1 && reader.ReadByte() != 0;
+        SetInput(h, v, yaw, pitch, jump);
+    }
+
     protected internal override void OnDestroy()
     {
         if (Body != null)

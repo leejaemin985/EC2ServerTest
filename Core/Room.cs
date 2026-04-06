@@ -39,7 +39,6 @@ public class Room
 
         var player = GameLoop.Spawn<Player>();
         player.OwnerId = session.PlayerId;
-        session.PlayerNetId = player.NetId;
 
         // 초기 스폰 패킷 ��신
         var spawnData = MakeSpawnPacket(player).ToBytes();
@@ -60,12 +59,10 @@ public class Room
     {
         Console.WriteLine($"[Room {Id}] Player {session.PlayerId} left");
 
-        if (session.PlayerNetId is { } netId)
+        foreach (var obj in GameLoop.FindByOwner(session.PlayerId))
         {
-            var obj = GameLoop.Find(netId);
-            obj?.Destroy();
-
-            var despawn = new DespawnPacket { NetId = netId };
+            obj.Destroy();
+            var despawn = new DespawnPacket { NetId = obj.NetId };
             _ = SessionManager.BroadcastTcpAsync(despawn.ToBytes(), session.PlayerId);
         }
 
@@ -75,32 +72,14 @@ public class Room
     // 패킷 처리
     public void HandlePacket(Session session, PacketType type, int tick, byte[] payload)
     {
-        switch (type)
-        {
-            case PacketType.Input:
-                HandleInput(session, payload);
-                break;
-            default:
-                Console.WriteLine($"[Room {Id}] Unknown packet {type} from Player {session.PlayerId}");
-                break;
-        }
-    }
-
-    void HandleInput(Session session, byte[] payload)
-    {
-        if (payload.Length < 16) return;
-
         var reader = new PacketReader(payload);
-        float h = reader.ReadFloat();
-        float v = reader.ReadFloat();
-        float yaw = reader.ReadFloat();
-        float pitch = reader.ReadFloat();
-        bool jump = payload.Length >= 17 && payload[16] != 0;
-        if (session.PlayerNetId is not { } netId) return;
+        if (reader.Remaining < 4) return;
 
+        uint netId = reader.ReadUInt();
         var obj = GameLoop.Find(netId);
-        if (obj is Player player)
-            player.SetInput(h, v, yaw, pitch, jump);
+        if (obj == null || obj.OwnerId != session.PlayerId) return;
+
+        obj.HandlePacket(type, reader);
     }
 
     // 오브젝트 패킷 큐 flush

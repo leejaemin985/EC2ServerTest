@@ -103,6 +103,9 @@ public abstract class NetworkObject
     /// <summary>오브젝트가 파괴될 때 1회 호출. 정리 용도.</summary>
     protected internal virtual void OnDestroy() { }
 
+    /// <summary>이 오브젝트에 대한 패킷을 처리한다. Room이 라우팅만 하고 실제 처리는 서브클래스에서 override.</summary>
+    protected internal virtual void HandlePacket(PacketType type, PacketReader reader) { }
+
     /// <summary>Active가 true로 전환될 때 호출.</summary>
     protected internal virtual void OnEnable() { }
 
