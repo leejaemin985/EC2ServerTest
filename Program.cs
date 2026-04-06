@@ -4,10 +4,7 @@ using System.Net.Sockets;
 
 // ── 설정 ──
 
-const int TcpPort = 7777;
-const int UdpPort = 8888;
 const int TickRate = 30;
-const int HeaderSize = 8;
 
 var cts = new CancellationTokenSource();
 
@@ -19,12 +16,12 @@ Console.CancelKeyPress += (_, e) =>
 
 // ── 네트워크 ──
 
-var udpServer = new UdpClient(UdpPort);
-var tcpListener = new TcpListener(IPAddress.Any, TcpPort);
+var udpServer = new UdpClient(NetworkSettings.UdpPort);
+var tcpListener = new TcpListener(IPAddress.Any, NetworkSettings.TcpPort);
 tcpListener.Start();
 
-Console.WriteLine($"[TCP] Listening on port {TcpPort}");
-Console.WriteLine($"[UDP] Listening on port {UdpPort}");
+Console.WriteLine($"[TCP] Listening on port {NetworkSettings.TcpPort}");
+Console.WriteLine($"[UDP] Listening on port {NetworkSettings.UdpPort}");
 
 // ── 룸 (우선 하나) ──
 
@@ -78,13 +75,13 @@ async Task AcceptTcpClientsAsync(CancellationToken ct)
 async Task HandleTcpClientAsync(Session session, CancellationToken ct)
 {
     var stream = session.Stream;
-    var headerBuf = new byte[HeaderSize];
+    var headerBuf = new byte[NetworkSettings.HeaderSize];
 
     try
     {
         while (!ct.IsCancellationRequested)
         {
-            if (!await ReadExactAsync(stream, headerBuf, 0, HeaderSize, ct))
+            if (!await ReadExactAsync(stream, headerBuf, 0, NetworkSettings.HeaderSize, ct))
                 break;
 
             ushort payloadLength = BinaryPrimitives.ReadUInt16LittleEndian(headerBuf);
@@ -122,13 +119,13 @@ async Task ReceiveUdpAsync(CancellationToken ct)
         catch (OperationCanceledException) { break; }
 
         var data = result.Buffer;
-        if (data.Length < HeaderSize) continue;
+        if (data.Length < NetworkSettings.HeaderSize) continue;
 
         ushort packetType = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(2));
         int tick = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(4));
 
-        byte[] payload = data.Length > HeaderSize
-            ? data[HeaderSize..]
+        byte[] payload = data.Length > NetworkSettings.HeaderSize
+            ? data[NetworkSettings.HeaderSize..]
             : Array.Empty<byte>();
 
         var session = room.SessionManager.FindByEndPoint(result.RemoteEndPoint);

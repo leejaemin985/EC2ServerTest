@@ -1,100 +1,58 @@
-using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
-using LJMCollision;
-using InGame.FSM;
 using InGame.Unit.Player;
-using InGame.Unit.Player.States;
 
 public class Room
 {
     public int Id { get; }
     public GameLoop GameLoop { get; }
     public SessionManager SessionManager { get; }
-    public CollisionWorld CollisionWorld { get; }
-    public PhysicsWorld PhysicsWorld { get; }
-
-    const int HeaderSize = 8;
 
     UdpClient _udpServer;
 
     public Room(int id, int tickRate, UdpClient udpServer, string? mapPath = null)
     {
         Id = id;
-        GameLoop = new GameLoop(tickRate);
+        GameLoop = new GameLoop(tickRate, mapPath);
         SessionManager = new SessionManager();
-        CollisionWorld = new CollisionWorld();
-        PhysicsWorld = new PhysicsWorld { StaticWorld = CollisionWorld };
         _udpServer = udpServer;
-
-        if (mapPath != null && System.IO.File.Exists(mapPath))
-        {
-            var mapData = MapData.FromFile(mapPath);
-            CollisionWorld.Load(mapData);
-            Console.WriteLine($"[Room {Id}] Map loaded: {CollisionWorld.BoxCount} boxes");
-        }
 
         GameLoop.OnPostTick = () =>
         {
-            PhysicsWorld.Step(GameLoop.DeltaTime);
+            FlushObjectPackets();
             BroadcastTransforms();
         };
     }
 
-    // ── 플레이어 입장 / 퇴장 ──
-
+    // 플레이어 입장 처리
     public async Task PlayerJoinAsync(Session session)
     {
         Console.WriteLine($"[Room {Id}] Player {session.PlayerId} joined");
+
+        // PlayerId를 먼저 통지해 클라가 자신을 확정
+        var idPacket = new PlayerIdAssignPacket
+        {
+            Tick = GameLoop.CurrentTick,
+            PlayerId = session.PlayerId,
+        };
+        await SessionManager.SendTcpAsync(session, idPacket.ToBytes());
 
         var player = GameLoop.Spawn<Player>();
         player.OwnerId = session.PlayerId;
         session.PlayerNetId = player.NetId;
 
-        // 물리 바디 부착
-        var body = new PhysicsBody(
-            player.Transform, BodyType.Dynamic,
-            new CapsuleShape(player.CapsuleRadius, player.CapsuleHeight),
-            CollisionLayer.Player)
-        {
-            Mass = PlayerData.Mass,
-            UseGravity = true,
-            Drag = PlayerData.Drag,
-            MaxSlopeAngle = PlayerData.MaxSlopeAngle,
-            UserData = player,
-        };
-        player.Body = body;
-        PhysicsWorld.Add(body);
-
-        // 상태 변경 콜백 등록
-        player.Fsm.OnStateChanged = (p, state) =>
-        {
-            if (state is PlayerState ps)
-            {
-                var packet = new PlayerStatePacket
-                {
-                    Tick = GameLoop.CurrentTick,
-                    NetId = p.NetId,
-                    State = (byte)ps.StateType,
-                };
-                var data = PacketToBytes(packet);
-                _ = SessionManager.BroadcastTcpAsync(data);
-            }
-        };
-
-        // 자기 스폰을 먼저 전송 (클라이언트가 PlayerId를 인식하도록)
-        var spawnData = PacketToBytes(MakeSpawnPacket(player));
+        // 초기 스폰 패킷 ��신
+        var spawnData = MakeSpawnPacket(player).ToBytes();
         await SessionManager.SendTcpAsync(session, spawnData);
 
-        // 기존 오브젝트들을 새 클라이언트에게 전송
+        // 기존 오브젝트 스냅샷 전송
         foreach (var existing in GameLoop.FindAll<NetworkObject>())
         {
             if (existing.NetId == player.NetId) continue;
-            var data = PacketToBytes(MakeSpawnPacket(existing));
-            await SessionManager.SendTcpAsync(session, data);
+            await SessionManager.SendTcpAsync(session, MakeSpawnPacket(existing).ToBytes());
         }
 
-        // 새 플레이어 스폰을 다른 클라이언트들에게 브로드캐스트
+        // 새 플레이어 스폰을 다른 클라에 브로드캐스트
         await SessionManager.BroadcastTcpAsync(spawnData, session.PlayerId);
     }
 
@@ -105,20 +63,16 @@ public class Room
         if (session.PlayerNetId is { } netId)
         {
             var obj = GameLoop.Find(netId);
-            if (obj is Player player && player.Body != null)
-                PhysicsWorld.Remove(player.Body);
             obj?.Destroy();
 
             var despawn = new DespawnPacket { NetId = netId };
-            var data = PacketToBytes(despawn);
-            _ = SessionManager.BroadcastTcpAsync(data, session.PlayerId);
+            _ = SessionManager.BroadcastTcpAsync(despawn.ToBytes(), session.PlayerId);
         }
 
         SessionManager.RemoveSession(session.PlayerId);
     }
 
-    // ── 패킷 처리 ──
-
+    // 패킷 처리
     public void HandlePacket(Session session, PacketType type, int tick, byte[] payload)
     {
         switch (type)
@@ -149,45 +103,31 @@ public class Room
             player.SetInput(h, v, yaw, pitch, jump);
     }
 
-    // ── Transform 브로드캐스트 ──
+    // 오브젝트 패킷 큐 flush
+    void FlushObjectPackets()
+    {
+        foreach (var obj in GameLoop.FindAll<NetworkObject>())
+        {
+            foreach (var packet in obj.DrainPackets())
+                _ = SessionManager.BroadcastTcpAsync(packet.ToBytes());
+        }
+    }
 
+    // Transform 브로드캐스트
     void BroadcastTransforms()
     {
         var objects = GameLoop.FindAll<NetworkObject>();
-        var writer = new PacketWriter();
-
-        int count = 0;
-        writer.WriteUShort(0);
+        var packet = new TransformPacket { Tick = GameLoop.CurrentTick };
 
         foreach (var obj in objects)
-        {
-            writer.WriteUInt(obj.NetId);
-            writer.WriteFloat(obj.Position.X);
-            writer.WriteFloat(obj.Position.Y);
-            writer.WriteFloat(obj.Position.Z);
-            writer.WriteFloat(obj.Rotation.X);
-            writer.WriteFloat(obj.Rotation.Y);
-            writer.WriteFloat(obj.Rotation.Z);
-            writer.WriteFloat(obj.Rotation.W);
-            count++;
-        }
+            packet.Add(obj.NetId, obj.Position, obj.Rotation);
 
-        if (count == 0) return;
+        if (packet.Count == 0) return;
 
-        byte[] payload = writer.ToArray();
-        BinaryPrimitives.WriteUInt16LittleEndian(payload, (ushort)count);
-
-        var final = new byte[HeaderSize + payload.Length];
-        BinaryPrimitives.WriteUInt16LittleEndian(final, (ushort)payload.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(final.AsSpan(2), (ushort)PacketType.Transform);
-        BinaryPrimitives.WriteInt32LittleEndian(final.AsSpan(4), GameLoop.CurrentTick);
-        payload.CopyTo(final.AsSpan(HeaderSize));
-
-        SessionManager.BroadcastUdp(_udpServer, final);
+        SessionManager.BroadcastUdp(_udpServer, packet.ToBytes());
     }
 
-    // ── 유틸리티 ──
-
+    // 패킷 직렬화 헬퍼
     SpawnPacket MakeSpawnPacket(NetworkObject obj)
     {
         return new SpawnPacket
@@ -206,17 +146,4 @@ public class Room
         };
     }
 
-    byte[] PacketToBytes(Packet packet)
-    {
-        var writer = new PacketWriter();
-        packet.Serialize(writer);
-        byte[] payload = writer.ToArray();
-
-        var final = new byte[HeaderSize + payload.Length];
-        BinaryPrimitives.WriteUInt16LittleEndian(final, (ushort)payload.Length);
-        BinaryPrimitives.WriteUInt16LittleEndian(final.AsSpan(2), (ushort)packet.Type);
-        BinaryPrimitives.WriteInt32LittleEndian(final.AsSpan(4), packet.Tick);
-        payload.CopyTo(final.AsSpan(HeaderSize));
-        return final;
-    }
 }

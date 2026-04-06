@@ -16,7 +16,14 @@ public partial class PhysicsWorld
     readonly List<PhysicsBody> _pendingRemove = new();
 
     /// <summary>정적 맵 충돌 (LJMCollision)</summary>
-    public CollisionWorld StaticWorld { get; set; }
+    public CollisionWorld StaticWorld { get; } = new();
+
+    /// <summary>맵 파일을 로드하여 정적 충돌 월드를 초기화한다.</summary>
+    public void LoadMap(string mapPath)
+    {
+        var mapData = MapData.FromFile(mapPath);
+        StaticWorld.Load(mapData);
+    }
 
     /// <summary>레이어 간 충돌 매트릭스. 기본값: 모든 레이어 충돌 가능.</summary>
     public LayerMatrix LayerMatrix { get; } = new();

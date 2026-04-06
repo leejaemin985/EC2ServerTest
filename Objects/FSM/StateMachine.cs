@@ -10,9 +10,11 @@ public class StateMachine<TOwner>
     /// <summary>상태 전환 시 호출되는 콜백. (owner, newState)</summary>
     public Action<TOwner, IState<TOwner>>? OnStateChanged;
 
-    public StateMachine(TOwner owner)
+    public StateMachine(TOwner owner, IState<TOwner> initialState)
     {
         _owner = owner;
+        _current = initialState;
+        _current.Enter(owner);
     }
 
     public void ChangeState(IState<TOwner> next)

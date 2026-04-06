@@ -70,6 +70,20 @@ public abstract class NetworkObject
     /// <summary>Destroy 요청이 들어왔는지 여부. GameLoop이 틱 끝에 정리한다.</summary>
     public bool IsDestroyed { get; internal set; }
 
+    // ── 브로드캐스트 패킷 큐 ──
+
+    private readonly Queue<Packet> _pendingPackets = new();
+
+    /// <summary>브로드캐스트할 패킷을 큐에 추가한다.</summary>
+    protected void EnqueuePacket(Packet packet) => _pendingPackets.Enqueue(packet);
+
+    /// <summary>큐에 쌓인 패킷을 모두 꺼낸다. GameLoop/Room이 틱마다 호출.</summary>
+    internal IEnumerable<Packet> DrainPackets()
+    {
+        while (_pendingPackets.Count > 0)
+            yield return _pendingPackets.Dequeue();
+    }
+
     // ── 내부 상태 플래그 (GameLoop이 사용) ──
 
     internal bool IsAwaked { get; set; }

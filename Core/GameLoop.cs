@@ -11,6 +11,7 @@ public class GameLoop
 
     public int TickRate { get; }
     public float DeltaTime { get; }
+    public PhysicsWorld PhysicsWorld { get; } = new();
 
     /// <summary>매 틱 Update 이후 호출되는 콜백. Transform 브로드캐스트 등에 사용.</summary>
     public Action? OnPostTick;
@@ -31,10 +32,13 @@ public class GameLoop
     // 순회 중 안전하게 접근하기 위한 스냅샷
     private readonly List<NetworkObject> _updateList = new();
 
-    public GameLoop(int tickRate = 30)
+    public GameLoop(int tickRate = 30, string? mapPath = null)
     {
         TickRate = tickRate;
         DeltaTime = 1f / tickRate;
+
+        if (mapPath != null && System.IO.File.Exists(mapPath))
+            PhysicsWorld.LoadMap(mapPath);
     }
 
     // ── NetworkObject 등록 / 조회 ──
@@ -190,10 +194,13 @@ public class GameLoop
             }
         }
 
-        // 3) PostTick 콜백
+        // 3) 물리 시뮬레이션
+        PhysicsWorld.Step(DeltaTime);
+
+        // 4) PostTick 콜백
         OnPostTick?.Invoke();
 
-        // 4) 파괴 예약된 오브젝트 정리
+        // 5) 파괴 예약된 오브젝트 정리
         lock (_lock)
         {
             _pendingDestroy.Clear();

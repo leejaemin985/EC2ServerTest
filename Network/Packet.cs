@@ -18,6 +18,7 @@ public enum PacketType : ushort
     // 연결 / 세션 (0 ~ 999)
     Connected = 1,
     Disconnected = 2,
+    PlayerIdAssign = 3,
 
     // 게임 오브젝트 (1000 ~ 1999)
     Spawn = 1000,
@@ -59,6 +60,22 @@ public abstract class Packet
 
     /// <summary>바이트 배열에서 페이로드를 역직렬화한다. (타입/틱 헤더 제외)</summary>
     public abstract void Deserialize(PacketReader reader);
+
+    /// <summary>헤더(길이 + 타입 + 틱) + 페이로드를 포함한 최종 바이트 배열을 반환한다.</summary>
+    public byte[] ToBytes()
+    {
+        var writer = new PacketWriter();
+        Serialize(writer);
+        byte[] payload = writer.ToArray();
+
+        int headerSize = NetworkSettings.HeaderSize;
+        var result = new byte[headerSize + payload.Length];
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(result, (ushort)payload.Length);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(result.AsSpan(2), (ushort)Type);
+        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(result.AsSpan(4), Tick);
+        payload.CopyTo(result.AsSpan(headerSize));
+        return result;
+    }
 }
 
 /// <summary>
