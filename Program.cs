@@ -22,6 +22,7 @@ tcpListener.Start();
 
 Console.WriteLine($"[TCP] Listening on port {NetworkSettings.TcpPort}");
 Console.WriteLine($"[UDP] Listening on port {NetworkSettings.UdpPort}");
+Console.WriteLine("[Debug] WebSocket viewer on ws://localhost:9090/ws (open DebugViewer/debug-viewer.html)");
 
 // ── 룸 (우선 하나) ──
 

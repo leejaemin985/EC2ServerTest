@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Physics Debug Viewer</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #0e1116; color: #cfd4db; }
+
+    /* HUD */
+    #hud {
+      position: fixed; top: 12px; left: 12px;
+      padding: 8px 14px;
+      background: rgba(20,24,30,0.85); border: 1px solid #232832; border-radius: 8px;
+      font-size: 13px; z-index: 10;
+    }
+    #hud strong { color: #6cf; }
+
+    /* Layer Panel */
+    #layer-panel {
+      position: fixed; top: 12px; right: 12px;
+      width: 220px; padding: 10px 14px;
+      background: rgba(20,24,30,0.9); border: 1px solid #232832; border-radius: 8px;
+      font-size: 13px; z-index: 10;
+    }
+    #layer-panel h3 { margin-bottom: 8px; font-size: 13px; color: #8af; }
+    .layer-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 4px 0;
+    }
+    .layer-row input[type="checkbox"] { cursor: pointer; }
+    .layer-row input[type="color"] {
+      width: 28px; height: 20px; border: none; cursor: pointer;
+      background: transparent;
+    }
+    .layer-row label { flex: 1; cursor: pointer; user-select: none; }
+    .layer-row select {
+      background: #1a1f28; color: #cfd4db; border: 1px solid #333;
+      border-radius: 4px; font-size: 11px; padding: 1px 2px; cursor: pointer;
+    }
+
+    /* Log */
+    #log {
+      position: fixed; bottom: 12px; left: 12px;
+      padding: 6px 12px;
+      font-size: 12px;
+      background: rgba(0,0,0,0.5); border-radius: 6px;
+      z-index: 10;
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="hud">
+    <span id="status-dot" style="color:#f55">&#9679;</span>
+    Tick: <strong id="tick">-</strong> |
+    Shapes: <strong id="shape-count">0</strong>
+  </div>
+  <div id="layer-panel">
+    <h3>Layers</h3>
+    <div id="layer-list"></div>
+  </div>
+  <div id="log">Disconnected</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // ── DOM ──
+    const logEl = document.getElementById('log');
+    const tickEl = document.getElementById('tick');
+    const shapeCountEl = document.getElementById('shape-count');
+    const statusDot = document.getElementById('status-dot');
+    const layerListEl = document.getElementById('layer-list');
+
+    const log = (text) => logEl.textContent = text;
+
+    // ── Three.js Scene ──
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1116);
+
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.05, 2000);
+    camera.position.set(15, 10, 15);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 1, 0);
+
+    scene.add(new THREE.GridHelper(40, 40, 0x334455, 0x22303c));
+    scene.add(new THREE.AxesHelper(2));
+
+    const shapeGroup = new THREE.Group();
+    scene.add(shapeGroup);
+
+    // ── Coordinate Conversion (Unity LH → Three.js RH) ──
+    const toRH = (v) => new THREE.Vector3(v[0], v[1], -v[2]);
+    const quatToRH = (q) => new THREE.Quaternion(-q[0], -q[1], q[2], q[3]);
+
+    // ── Layer State ──
+    // { name: { active: bool, color: '#hex' } }
+    const layerState = {};
+    const defaultColors = {
+      Map: '#2f5580',
+      Player: '#4ad6ff',
+      Projectile: '#ff7f50',
+    };
+    const fallbackColor = '#aaaaaa';
+
+    function loadLayerState() {
+      try {
+        const saved = localStorage.getItem('debugViewer_layers');
+        if (saved) Object.assign(layerState, JSON.parse(saved));
+      } catch {}
+    }
+
+    function saveLayerState() {
+      try { localStorage.setItem('debugViewer_layers', JSON.stringify(layerState)); } catch {}
+    }
+
+    function ensureLayer(name) {
+      if (layerState[name]) return;
+      layerState[name] = {
+        active: true,
+        color: defaultColors[name] || fallbackColor,
+        wireframe: true,
+      };
+    }
+
+    function buildLayerUI() {
+      layerListEl.innerHTML = '';
+      for (const name of Object.keys(layerState)) {
+        const row = document.createElement('div');
+        row.className = 'layer-row';
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = layerState[name].active;
+        cb.addEventListener('change', () => {
+          layerState[name].active = cb.checked;
+          saveLayerState();
+        });
+
+        const colorInput = document.createElement('input');
+        colorInput.type = 'color';
+        colorInput.value = layerState[name].color;
+        colorInput.addEventListener('input', () => {
+          layerState[name].color = colorInput.value;
+          saveLayerState();
+        });
+
+        const modeSelect = document.createElement('select');
+        for (const opt of ['wire', 'solid']) {
+          const o = document.createElement('option');
+          o.value = opt; o.textContent = opt;
+          modeSelect.appendChild(o);
+        }
+        modeSelect.value = layerState[name].wireframe ? 'wire' : 'solid';
+        modeSelect.addEventListener('change', () => {
+          layerState[name].wireframe = modeSelect.value === 'wire';
+          saveLayerState();
+        });
+
+        const label = document.createElement('label');
+        label.textContent = name;
+        label.addEventListener('click', () => { cb.click(); });
+
+        row.append(cb, colorInput, modeSelect, label);
+        layerListEl.appendChild(row);
+      }
+    }
+
+    loadLayerState();
+
+    // ── Shape Renderers (wireframe) ──
+
+    function clearShapes() {
+      while (shapeGroup.children.length) {
+        const child = shapeGroup.children[0];
+        child.geometry?.dispose();
+        child.material?.dispose();
+        shapeGroup.remove(child);
+      }
+    }
+
+    // feet → center offset per shape type
+    function bottomOffset(s) {
+      switch (s.shape) {
+        case 'Sphere':  return s.radius;
+        case 'Capsule': return s.height * 0.5;
+        case 'OBB':     return s.halfSize[1];
+        default:        return 0;
+      }
+    }
+
+    function makeMat(color, wireframe) {
+      return wireframe
+        ? new THREE.MeshBasicMaterial({ color, wireframe: true })
+        : new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.35 });
+    }
+
+    function addOBB(pos, rot, halfSize, color, wireframe) {
+      const geo = new THREE.BoxGeometry(halfSize[0] * 2, halfSize[1] * 2, halfSize[2] * 2);
+      const mesh = new THREE.Mesh(geo, makeMat(color, wireframe));
+      mesh.position.copy(pos);
+      mesh.quaternion.copy(rot);
+      shapeGroup.add(mesh);
+    }
+
+    function addCapsule(pos, rot, radius, height, color, wireframe) {
+      const cylinderLen = Math.max(0, height - radius * 2);
+      const geo = new THREE.CapsuleGeometry(radius, cylinderLen, 8, 16);
+      const mesh = new THREE.Mesh(geo, makeMat(color, wireframe));
+      mesh.position.copy(pos);
+      mesh.quaternion.copy(rot);
+      shapeGroup.add(mesh);
+    }
+
+    function addSphere(pos, radius, color, wireframe) {
+      const geo = new THREE.SphereGeometry(radius, 16, 12);
+      const mesh = new THREE.Mesh(geo, makeMat(color, wireframe));
+      mesh.position.copy(pos);
+      shapeGroup.add(mesh);
+    }
+
+    // ── Message Handlers ──
+
+    function handleLayers(msg) {
+      for (const name of msg.layers) ensureLayer(name);
+      buildLayerUI();
+      saveLayerState();
+      log('Layers received: ' + msg.layers.join(', '));
+    }
+
+    function handleState(msg) {
+      clearShapes();
+      const shapes = msg.shapes ?? [];
+      let rendered = 0;
+
+      for (const s of shapes) {
+        const layer = layerState[s.layer];
+        if (!layer || !layer.active) continue;
+
+        // feet → center (Y += bottomOffset), then coordinate conversion
+        const feetRH = toRH(s.pos);
+        const offset = bottomOffset(s);
+        const centerPos = new THREE.Vector3(feetRH.x, feetRH.y + offset, feetRH.z);
+        const rot = quatToRH(s.rot);
+        const color = new THREE.Color(layer.color);
+        const wf = layer.wireframe !== false;
+
+        switch (s.shape) {
+          case 'OBB':
+            addOBB(centerPos, rot, s.halfSize, color, wf);
+            break;
+          case 'Capsule':
+            addCapsule(centerPos, rot, s.radius, s.height, color, wf);
+            break;
+          case 'Sphere':
+            addSphere(centerPos, s.radius, color, wf);
+            break;
+        }
+        rendered++;
+      }
+
+      tickEl.textContent = msg.tick ?? '-';
+      shapeCountEl.textContent = rendered;
+    }
+
+    // ── WebSocket ──
+
+    function connect() {
+      const ws = new WebSocket('ws://localhost:9090/ws');
+
+      ws.onopen = () => {
+        statusDot.style.color = '#4f4';
+        log('Connected (ws://localhost:9090/ws)');
+      };
+
+      ws.onclose = () => {
+        statusDot.style.color = '#f55';
+        clearShapes();
+        log('Disconnected. Retry in 2s...');
+        setTimeout(connect, 2000);
+      };
+
+      ws.onerror = () => {
+        log('WebSocket error');
+      };
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'layers') handleLayers(msg);
+          else if (msg.type === 'state') handleState(msg);
+        } catch (err) {
+          console.error('Parse error:', err);
+        }
+      };
+    }
+
+    connect();
+
+    // ── Render Loop ──
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>

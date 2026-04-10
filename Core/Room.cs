@@ -2,13 +2,14 @@ using System.Net;
 using System.Net.Sockets;
 using InGame.Unit.Player;
 
-public class Room
+public class Room : IDisposable
 {
     public int Id { get; }
     public GameLoop GameLoop { get; }
     public SessionManager SessionManager { get; }
 
     UdpClient _udpServer;
+    DebugBroadcaster _debugBroadcaster;
 
     public Room(int id, int tickRate, UdpClient udpServer, string? mapPath = null)
     {
@@ -16,11 +17,13 @@ public class Room
         GameLoop = new GameLoop(tickRate, mapPath);
         SessionManager = new SessionManager();
         _udpServer = udpServer;
+        _debugBroadcaster = new DebugBroadcaster(GameLoop.PhysicsWorld, tickRate);
 
         GameLoop.OnPostTick = () =>
         {
             FlushObjectPackets();
             BroadcastTransforms();
+            _debugBroadcaster.Update(GameLoop.CurrentTick);
         };
     }
 
@@ -99,6 +102,11 @@ public class Room
         if (packet.Count == 0) return;
 
         SessionManager.BroadcastUdp(_udpServer, packet.ToBytes());
+    }
+
+    public void Dispose()
+    {
+        _debugBroadcaster.Dispose();
     }
 
     // 패킷 직렬화 헬퍼
