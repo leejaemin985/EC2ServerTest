@@ -95,12 +95,7 @@ public class Room
     // Transform 브로드캐스트
     void BroadcastTransforms()
     {
-        var objects = GameLoop.FindAll<NetworkObject>();
-        var packet = new TransformPacket { Tick = GameLoop.CurrentTick };
-
-        foreach (var obj in objects)
-            packet.Add(obj.NetId, obj.Position, obj.Rotation);
-
+        var packet = GameLoop.BuildTransformSnapshot();
         if (packet.Count == 0) return;
 
         SessionManager.BroadcastUdp(_udpServer, packet.ToBytes());

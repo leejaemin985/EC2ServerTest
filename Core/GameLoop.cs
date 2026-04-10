@@ -87,6 +87,20 @@ public class GameLoop
         }
     }
 
+    /// <summary>현재 틱의 모든 NetworkObject Transform 스냅샷을 패킷으로 만든다.</summary>
+    public TransformPacket BuildTransformSnapshot()
+    {
+        lock (_lock)
+        {
+            var packet = new TransformPacket { Tick = CurrentTick };
+            foreach (var obj in _objects.Values)
+                packet.Add(obj.NetId, obj.Position, obj.Rotation);
+            foreach (var obj in _pendingAdd)
+                packet.Add(obj.NetId, obj.Position, obj.Rotation);
+            return packet;
+        }
+    }
+
     /// <summary>특정 OwnerId를 가진 오브젝트를 모두 찾는다.</summary>
     public List<NetworkObject> FindByOwner(int ownerId)
     {
