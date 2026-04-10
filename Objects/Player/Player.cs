@@ -19,6 +19,7 @@ public class Player : NetworkObject
     internal StateMachine<Player> Fsm { get; private set; } = null!;
 
     // 상태 인스턴스 (미리 할당)
+    internal IdleState IdleState { get; } = new();
     internal MoveState MoveState { get; } = new();
     internal FallState FallState { get; } = new();
 
@@ -35,7 +36,7 @@ public class Player : NetworkObject
     protected internal override void Awake()
     {
         Movement = new PlayerMovement(this);
-        Fsm = new StateMachine<Player>(this, MoveState);
+        Fsm = new StateMachine<Player>(this, IdleState);
 
         // FSM 상태변경 → 패킷 큐에 추가
         Fsm.OnStateChanged = (p, state) =>

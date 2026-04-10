@@ -8,7 +8,7 @@ public static class PlayerData
     public const float CapsuleHeight = 1.8f;
 
     // ── 이동 ──
-    public const float MoveSpeed = 10f;
+    public const float MoveSpeed = 5f;
     public const float JumpForce = 20f;
     public const float MaxSlopeAngle = 45f;
 

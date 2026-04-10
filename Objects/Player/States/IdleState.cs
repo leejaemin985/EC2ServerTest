@@ -2,9 +2,16 @@ using LJMCollision;
 
 namespace InGame.Unit.Player.States;
 
-public class MoveState : PlayerState
+public class IdleState : PlayerState
 {
-    public override PlayerStateType StateType => PlayerStateType.Move;
+    public override PlayerStateType StateType => PlayerStateType.Idle;
+
+    public override void Enter(Player player)
+    {
+        // 수평 속도 즉시 정지
+        if (player.Body != null)
+            player.Body.Velocity = new Vec3(0f, player.Body.Velocity.Y, 0f);
+    }
 
     public override void Update(Player player, float deltaTime)
     {
@@ -24,15 +31,14 @@ public class MoveState : PlayerState
             return;
         }
 
-        // 이동 입력이 없으면 IdleState로 전환
-        if (input.H == 0f && input.V == 0f)
+        // 이동 입력이 들어오면 MoveState로 전환
+        if (input.H != 0f || input.V != 0f)
         {
-            player.Fsm.ChangeState(player.IdleState);
+            player.Fsm.ChangeState(player.MoveState);
             return;
         }
 
         player.Movement.ApplyRotation(input);
-        player.Movement.ApplyMovement(input);
         input.ConsumeOneShot();
     }
 }

@@ -10,7 +10,10 @@ public class FallState : PlayerState
 
         if (player.Grounded)
         {
-            player.Fsm.ChangeState(player.MoveState);
+            if (input.H != 0f || input.V != 0f)
+                player.Fsm.ChangeState(player.MoveState);
+            else
+                player.Fsm.ChangeState(player.IdleState);
             return;
         }
 
