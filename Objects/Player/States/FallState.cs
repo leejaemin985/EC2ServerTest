@@ -4,6 +4,11 @@ public class FallState : PlayerState
 {
     public override PlayerStateType StateType => PlayerStateType.Fall;
 
+    public override void Enter(Player player)
+    {
+        player.Animator?.Play("Root_Jump", loop: false);
+    }
+
     public override void Update(Player player, float deltaTime)
     {
         var input = player.Input;

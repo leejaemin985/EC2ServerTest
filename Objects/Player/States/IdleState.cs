@@ -11,6 +11,8 @@ public class IdleState : PlayerState
         // 수평 속도 즉시 정지
         if (player.Body != null)
             player.Body.Velocity = new Vec3(0f, player.Body.Velocity.Y, 0f);
+
+        player.Animator?.Play("Root_Aim_Idle");
     }
 
     public override void Update(Player player, float deltaTime)

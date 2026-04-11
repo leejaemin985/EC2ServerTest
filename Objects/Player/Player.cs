@@ -14,6 +14,9 @@ public class Player : NetworkObject
 
     public PhysicsBody? Body { get; private set; }
 
+    internal BoneAnimator? Animator { get; private set; }
+    internal HitboxSkeleton? Skeleton { get; private set; }
+
     internal PlayerInput Input { get; } = new();
     internal PlayerMovement Movement { get; private set; } = null!;
     internal StateMachine<Player> Fsm { get; private set; } = null!;
@@ -63,6 +66,13 @@ public class Player : NetworkObject
             });
         }
 
+        // 애니메이션 + hitbox 초기화
+        if (Loop.HitboxDefs is { } hitboxDefs)
+        {
+            Animator = new BoneAnimator(Loop.AnimClips);
+            Skeleton = new HitboxSkeleton(Animator, hitboxDefs);
+        }
+
         if (Loop.PhysicsWorld is { } world)
         {
             Body = new PhysicsBody(
@@ -82,8 +92,13 @@ public class Player : NetworkObject
 
     protected internal override void Update(float deltaTime)
     {
+        Animator?.Tick();
         Fsm.Update(deltaTime);
     }
+
+    /// <summary>현재 프레임 기준 월드 공간 hitbox 목록</summary>
+    public List<HitboxSkeleton.WorldHitbox>? EvaluateHitboxes()
+        => Skeleton?.Evaluate(Position, Rotation);
 
     protected internal override void HandlePacket(PacketType type, PacketReader reader)
     {

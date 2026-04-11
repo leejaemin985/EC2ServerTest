@@ -17,7 +17,7 @@ public class Room : IDisposable
         GameLoop = new GameLoop(tickRate, mapPath);
         SessionManager = new SessionManager();
         _udpServer = udpServer;
-        _debugBroadcaster = new DebugBroadcaster(GameLoop.PhysicsWorld, tickRate);
+        _debugBroadcaster = new DebugBroadcaster(GameLoop, tickRate);
 
         GameLoop.OnPostTick = () =>
         {

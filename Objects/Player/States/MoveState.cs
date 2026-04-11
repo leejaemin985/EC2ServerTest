@@ -31,6 +31,15 @@ public class MoveState : PlayerState
             return;
         }
 
+        // 입력 방향에 따라 애니메이션 전환
+        if (player.Animator != null)
+        {
+            string clip = (MathF.Abs(input.V) >= MathF.Abs(input.H))
+                ? (input.V > 0 ? "Root_Aim_Run_F" : "Root_Aim_Run_B")
+                : (input.H > 0 ? "Root_Aim_Run_R" : "Root_Aim_Run_L");
+            player.Animator.Play(clip);
+        }
+
         player.Movement.ApplyRotation(input);
         player.Movement.ApplyMovement(input);
         input.ConsumeOneShot();

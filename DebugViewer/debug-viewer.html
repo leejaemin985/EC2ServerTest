@@ -216,12 +216,21 @@
       shapeGroup.add(mesh);
     }
 
-    function addCapsule(pos, rot, radius, height, color, wireframe) {
+    // direction: 0=X, 1=Y(default), 2=Z
+    const dirRotations = {
+      0: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, 0, Math.PI / 2)),
+      1: new THREE.Quaternion(),
+      2: new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)),
+    };
+
+    function addCapsule(pos, rot, radius, height, color, wireframe, direction = 1) {
       const cylinderLen = Math.max(0, height - radius * 2);
       const geo = new THREE.CapsuleGeometry(radius, cylinderLen, 8, 16);
       const mesh = new THREE.Mesh(geo, makeMat(color, wireframe));
       mesh.position.copy(pos);
-      mesh.quaternion.copy(rot);
+      // bone rotation + direction 보정
+      const dirRot = dirRotations[direction] ?? dirRotations[1];
+      mesh.quaternion.copy(rot).multiply(dirRot);
       shapeGroup.add(mesh);
     }
 
@@ -250,10 +259,10 @@
         const layer = layerState[s.layer];
         if (!layer || !layer.active) continue;
 
-        // feet → center (Y += bottomOffset), then coordinate conversion
-        const feetRH = toRH(s.pos);
-        const offset = bottomOffset(s);
-        const centerPos = new THREE.Vector3(feetRH.x, feetRH.y + offset, feetRH.z);
+        // position → center 변환
+        const posRH = toRH(s.pos);
+        const offset = s.isCenter ? 0 : bottomOffset(s);
+        const centerPos = new THREE.Vector3(posRH.x, posRH.y + offset, posRH.z);
         const rot = quatToRH(s.rot);
         const color = new THREE.Color(layer.color);
         const wf = layer.wireframe !== false;
@@ -263,7 +272,7 @@
             addOBB(centerPos, rot, s.halfSize, color, wf);
             break;
           case 'Capsule':
-            addCapsule(centerPos, rot, s.radius, s.height, color, wf);
+            addCapsule(centerPos, rot, s.radius, s.height, color, wf, s.direction ?? 1);
             break;
           case 'Sphere':
             addSphere(centerPos, s.radius, color, wf);

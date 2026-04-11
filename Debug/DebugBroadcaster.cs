@@ -13,6 +13,7 @@ using LJMCollision;
 /// </summary>
 public sealed class DebugBroadcaster : IDisposable
 {
+    readonly GameLoop _gameLoop;
     readonly PhysicsWorld _physics;
     readonly DebugWebSocketServer _ws;
     readonly int _intervalTicks;
@@ -21,9 +22,10 @@ public sealed class DebugBroadcaster : IDisposable
     /// <param name="tickRate">GameLoop 틱레이트(Hz)</param>
     /// <param name="port">WebSocket 포트</param>
     /// <param name="sendRate">브로드캐스트 주기(Hz)</param>
-    public DebugBroadcaster(PhysicsWorld physicsWorld, int tickRate, int port = 9090, int sendRate = 10)
+    public DebugBroadcaster(GameLoop gameLoop, int tickRate, int port = 9090, int sendRate = 10)
     {
-        _physics = physicsWorld;
+        _gameLoop = gameLoop;
+        _physics = gameLoop.PhysicsWorld;
         _intervalTicks = Math.Max(1, tickRate / sendRate);
         _ws = new DebugWebSocketServer(port);
         _ws.OnClientConnected = SendLayersAsync;
@@ -58,6 +60,7 @@ public sealed class DebugBroadcaster : IDisposable
             if (val == CollisionLayer.None || val == CollisionLayer.All) continue;
             names.Add(val.ToString());
         }
+        names.Add("Hitbox"); // 테스트용 bone hitbox 레이어
         return names;
     }
 
@@ -130,6 +133,56 @@ public sealed class DebugBroadcaster : IDisposable
                         halfSize = new[] { bx.HalfSize.X, bx.HalfSize.Y, bx.HalfSize.Z }
                     });
                     break;
+            }
+        }
+
+        // 3) Player bone hitbox
+        foreach (var player in _gameLoop.FindAll<InGame.Unit.Player.Player>())
+        {
+            var hitboxes = player.EvaluateHitboxes();
+            if (hitboxes == null) continue;
+            foreach (var wh in hitboxes)
+            {
+                switch (wh.Type)
+                {
+                    case HitboxDefinition.HitboxShapeType.Sphere:
+                        shapes.Add(new
+                        {
+                            shape = "Sphere",
+                            layer = "Hitbox",
+                            pos = ToArray(wh.Center),
+                            rot = ToArray(wh.Rotation),
+                            radius = wh.Radius,
+                            isCenter = true
+                        });
+                        break;
+
+                    case HitboxDefinition.HitboxShapeType.Capsule:
+                        shapes.Add(new
+                        {
+                            shape = "Capsule",
+                            layer = "Hitbox",
+                            pos = ToArray(wh.Center),
+                            rot = ToArray(wh.Rotation),
+                            radius = wh.Radius,
+                            height = wh.Height,
+                            direction = wh.Direction,
+                            isCenter = true
+                        });
+                        break;
+
+                    case HitboxDefinition.HitboxShapeType.OBB:
+                        shapes.Add(new
+                        {
+                            shape = "OBB",
+                            layer = "Hitbox",
+                            pos = ToArray(wh.Center),
+                            rot = ToArray(wh.Rotation),
+                            halfSize = new[] { wh.HalfSize.X, wh.HalfSize.Y, wh.HalfSize.Z },
+                            isCenter = true
+                        });
+                        break;
+                }
             }
         }
 
