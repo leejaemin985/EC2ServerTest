@@ -4,21 +4,21 @@
 /// </summary>
 public static class AnimationManager
 {
-    static AnimationClipManager? _clips;
+    static AnimationClipManager? _clipManager;
     static HitboxDefinition? _hitboxDefs;
 
-    public static AnimationClipManager Clips
-        => _clips ?? throw new InvalidOperationException("AnimationManager not initialized");
+    public static AnimationClipManager ClipManager
+        => _clipManager ?? throw new InvalidOperationException("AnimationManager not initialized");
 
     public static HitboxDefinition? HitboxDefs => _hitboxDefs;
 
-    public static bool IsInitialized => _clips != null;
+    public static bool IsInitialized => _clipManager != null;
 
     /// <summary>애니메이션 폴더에서 클립 + hitbox 정의를 로드한다.</summary>
     public static void Init(string animFolder, string hitboxFileName = "hitbox_defs.json")
     {
-        _clips = new AnimationClipManager();
-        _clips.LoadFolder(animFolder);
+        _clipManager = new AnimationClipManager();
+        _clipManager.LoadFolder(animFolder);
 
         string hitboxPath = Path.Combine(animFolder, hitboxFileName);
         if (File.Exists(hitboxPath))

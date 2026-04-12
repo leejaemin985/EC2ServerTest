@@ -6,7 +6,7 @@ public class FallState : PlayerState
 
     public override void Enter(Player player)
     {
-        player.Animator?.Play("Root_Jump", loop: false);
+        player.Animator?.Play("Root_Jump", player.Loop.CurrentTick, loop: false);
     }
 
     public override void Update(Player player, float deltaTime)

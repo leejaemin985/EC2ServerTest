@@ -14,16 +14,18 @@ public sealed class DebugBroadcaster : IDisposable
     readonly PhysicsWorld _physics;
     readonly DebugWebSocketServer _ws;
     readonly int _intervalTicks;
+    readonly bool _hitbox;
     int _lastSentTick;
 
     // 맵은 변경되지 않으므로 1회만 직렬화하여 캐싱
     List<object>? _cachedMapShapes;
 
-    public DebugBroadcaster(GameLoop gameLoop, int tickRate, int port = 9090, int sendRate = 10)
+    public DebugBroadcaster(GameLoop gameLoop, int tickRate, int port = 9090, int sendRate = 10, bool hitbox = false)
     {
         _gameLoop = gameLoop;
         _physics = gameLoop.PhysicsWorld;
         _intervalTicks = Math.Max(1, tickRate / sendRate);
+        _hitbox = hitbox;
         _ws = new DebugWebSocketServer(port);
         _ws.OnClientConnected = SendLayersAsync;
     }
@@ -69,7 +71,7 @@ public sealed class DebugBroadcaster : IDisposable
 
         AppendMapShapes(shapes);
         AppendBodyShapes(shapes);
-        AppendHitboxShapes(shapes);
+        if (_hitbox) AppendHitboxShapes(shapes);
 
         return JsonSerializer.Serialize(new { type = "state", tick, shapes }, JsonOpts);
     }
@@ -153,7 +155,7 @@ public sealed class DebugBroadcaster : IDisposable
     {
         foreach (var player in _gameLoop.FindAll<InGame.Unit.Player.Player>())
         {
-            var hitboxes = player.EvaluateHitboxes();
+            var hitboxes = player.EvaluateHitboxes(_gameLoop.CurrentTick);
             if (hitboxes == null) continue;
 
             foreach (var wh in hitboxes)

@@ -37,7 +37,7 @@ public class MoveState : PlayerState
             string clip = (MathF.Abs(input.V) >= MathF.Abs(input.H))
                 ? (input.V > 0 ? "Root_Aim_Run_F" : "Root_Aim_Run_B")
                 : (input.H > 0 ? "Root_Aim_Run_R" : "Root_Aim_Run_L");
-            player.Animator.Play(clip);
+            player.Animator.Play(clip, player.Loop.CurrentTick);
         }
 
         player.Movement.ApplyRotation(input);

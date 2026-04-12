@@ -12,7 +12,7 @@ public class IdleState : PlayerState
         if (player.Body != null)
             player.Body.Velocity = new Vec3(0f, player.Body.Velocity.Y, 0f);
 
-        player.Animator?.Play("Root_Aim_Idle");
+        player.Animator?.Play("Root_Aim_Idle", player.Loop.CurrentTick);
     }
 
     public override void Update(Player player, float deltaTime)

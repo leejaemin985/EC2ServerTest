@@ -82,8 +82,8 @@ public class Player : NetworkObject
     {
         if (!AnimationManager.IsInitialized) return;
 
-        if (AnimationManager.Clips.Clips.Count > 0)
-            Animator = new BoneAnimator(AnimationManager.Clips);
+        if (AnimationManager.ClipManager.Clips.Count > 0)
+            Animator = new BoneAnimator(AnimationManager.ClipManager);
 
         if (Animator != null && AnimationManager.HitboxDefs is { } hitboxDefs)
             Skeleton = new HitboxSkeleton(Animator, hitboxDefs);
@@ -109,13 +109,12 @@ public class Player : NetworkObject
 
     protected internal override void Update(float deltaTime)
     {
-        Animator?.Tick();
         Fsm.Update(deltaTime);
     }
 
-    /// <summary>현재 프레임 기준 월드 공간 hitbox 목록</summary>
-    public List<WorldHitbox>? EvaluateHitboxes()
-        => Skeleton?.Evaluate(Position, Rotation);
+    /// <summary>특정 틱 시점의 월드 공간 hitbox 목록</summary>
+    public List<WorldHitbox>? EvaluateHitboxes(int tick)
+        => Skeleton?.Evaluate(tick, Position, Rotation);
 
     protected internal override void HandlePacket(PacketType type, PacketReader reader)
     {

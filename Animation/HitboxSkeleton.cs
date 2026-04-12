@@ -25,9 +25,10 @@ public class HitboxSkeleton
     /// <summary>
     /// 현재 애니메이션 프레임 기준으로 월드 공간 hitbox 목록을 계산한다.
     /// </summary>
+    /// <param name="currentTick">현재 서버 틱</param>
     /// <param name="worldPos">캐릭터 월드 위치</param>
     /// <param name="worldRot">캐릭터 월드 회전</param>
-    public List<WorldHitbox> Evaluate(Vec3 worldPos, Quat worldRot)
+    public List<WorldHitbox> Evaluate(int currentTick, Vec3 worldPos, Quat worldRot)
     {
         var clip = _animator.CurrentClip;
         if (clip == null) return new List<WorldHitbox>();
@@ -50,8 +51,8 @@ public class HitboxSkeleton
             var hb = _hitboxDefs.Hitboxes[i];
 
             // bake 데이터: root 기준 상대 좌표
-            Vec3 localPos = _animator.GetBonePosition(boneIdx);
-            Quat localRot = _animator.GetBoneRotation(boneIdx);
+            Vec3 localPos = _animator.GetBonePosition(currentTick, boneIdx);
+            Quat localRot = _animator.GetBoneRotation(currentTick, boneIdx);
 
             // bone local offset 적용
             Vec3 localCenter = localPos + localRot.Rotate(hb.Offset);

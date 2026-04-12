@@ -9,21 +9,24 @@ public class Room : IDisposable
     public SessionManager SessionManager { get; }
 
     UdpClient _udpServer;
-    DebugBroadcaster _debugBroadcaster;
+    DebugBroadcaster? _debugBroadcaster;
 
-    public Room(int id, int tickRate, UdpClient udpServer, string? mapPath = null)
+    public Room(int id, int tickRate, UdpClient udpServer, string? mapPath = null,
+        bool debugViewer = false, bool debugHitbox = false)
     {
         Id = id;
         GameLoop = new GameLoop(tickRate, mapPath);
         SessionManager = new SessionManager();
         _udpServer = udpServer;
-        _debugBroadcaster = new DebugBroadcaster(GameLoop, tickRate);
+
+        if (debugViewer)
+            _debugBroadcaster = new DebugBroadcaster(GameLoop, tickRate, hitbox: debugHitbox);
 
         GameLoop.OnPostTick = () =>
         {
             FlushObjectPackets();
             BroadcastTransforms();
-            _debugBroadcaster.Update(GameLoop.CurrentTick);
+            _debugBroadcaster?.Update(GameLoop.CurrentTick);
         };
     }
 
@@ -106,7 +109,7 @@ public class Room : IDisposable
 
     public void Dispose()
     {
-        _debugBroadcaster.Dispose();
+        _debugBroadcaster?.Dispose();
     }
 
     // 패킷 직렬화 헬퍼

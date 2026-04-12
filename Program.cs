@@ -5,6 +5,8 @@ using System.Net.Sockets;
 // ── 설정 ──
 
 const int TickRate = 30;
+bool debugViewer = args.Contains("--viewer");
+bool debugHitbox = args.Contains("--hitbox");
 
 var cts = new CancellationTokenSource();
 
@@ -22,7 +24,10 @@ tcpListener.Start();
 
 Console.WriteLine($"[TCP] Listening on port {NetworkSettings.TcpPort}");
 Console.WriteLine($"[UDP] Listening on port {NetworkSettings.UdpPort}");
-Console.WriteLine("[Debug] WebSocket viewer on ws://localhost:9090/ws (open DebugViewer/debug-viewer.html)");
+if (debugViewer)
+    Console.WriteLine("[Debug] WebSocket viewer on ws://localhost:9090/ws (open DebugViewer/debug-viewer.html)");
+if (debugHitbox)
+    Console.WriteLine("[Debug] Hitbox visualization enabled");
 
 // ── 공유 자원 로드 ──
 
@@ -30,7 +35,7 @@ AnimationManager.Init("Data/Animations");
 
 // ── 룸 (우선 하나) ──
 
-var room = new Room(1, TickRate, udpServer, "Maps/map.json");
+var room = new Room(1, TickRate, udpServer, "Maps/map.json", debugViewer, debugHitbox);
 
 // ── 태스크 시작 ──
 
