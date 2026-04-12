@@ -38,10 +38,21 @@ public class Player : NetworkObject
 
     protected internal override void Awake()
     {
+        InitMovement();
+        InitFsm();
+        InitAnimation();
+        InitPhysicsBody();
+    }
+
+    void InitMovement()
+    {
         Movement = new PlayerMovement(this);
+    }
+
+    void InitFsm()
+    {
         Fsm = new StateMachine<Player>(this, IdleState);
 
-        // FSM 상태변경 → 패킷 큐에 추가
         Fsm.OnStateChanged = (p, state) =>
         {
             if (state is PlayerState ps)
@@ -65,29 +76,35 @@ public class Player : NetworkObject
                 State = (byte)initState.StateType,
             });
         }
+    }
 
-        // 애니메이션 + hitbox 초기화
-        if (Loop.HitboxDefs is { } hitboxDefs)
-        {
-            Animator = new BoneAnimator(Loop.AnimClips);
+    void InitAnimation()
+    {
+        if (!AnimationManager.IsInitialized) return;
+
+        if (AnimationManager.Clips.Clips.Count > 0)
+            Animator = new BoneAnimator(AnimationManager.Clips);
+
+        if (Animator != null && AnimationManager.HitboxDefs is { } hitboxDefs)
             Skeleton = new HitboxSkeleton(Animator, hitboxDefs);
-        }
+    }
 
-        if (Loop.PhysicsWorld is { } world)
+    void InitPhysicsBody()
+    {
+        if (Loop.PhysicsWorld is not { } world) return;
+
+        Body = new PhysicsBody(
+            Transform, BodyType.Dynamic,
+            new CapsuleShape(CapsuleRadius, CapsuleHeight),
+            CollisionLayer.Player)
         {
-            Body = new PhysicsBody(
-                Transform, BodyType.Dynamic,
-                new CapsuleShape(CapsuleRadius, CapsuleHeight),
-                CollisionLayer.Player)
-            {
-                Mass = PlayerData.Mass,
-                UseGravity = true,
-                Drag = PlayerData.Drag,
-                MaxSlopeAngle = PlayerData.MaxSlopeAngle,
-                UserData = this,
-            };
-            world.Add(Body);
-        }
+            Mass = PlayerData.Mass,
+            UseGravity = true,
+            Drag = PlayerData.Drag,
+            MaxSlopeAngle = PlayerData.MaxSlopeAngle,
+            UserData = this,
+        };
+        world.Add(Body);
     }
 
     protected internal override void Update(float deltaTime)
@@ -97,7 +114,7 @@ public class Player : NetworkObject
     }
 
     /// <summary>현재 프레임 기준 월드 공간 hitbox 목록</summary>
-    public List<HitboxSkeleton.WorldHitbox>? EvaluateHitboxes()
+    public List<WorldHitbox>? EvaluateHitboxes()
         => Skeleton?.Evaluate(Position, Rotation);
 
     protected internal override void HandlePacket(PacketType type, PacketReader reader)

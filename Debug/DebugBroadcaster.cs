@@ -1,7 +1,4 @@
-using System.Collections.Concurrent;
-using System.Net;
 using System.Net.WebSockets;
-using System.Text;
 using System.Text.Json;
 using LJMCollision;
 
@@ -19,9 +16,9 @@ public sealed class DebugBroadcaster : IDisposable
     readonly int _intervalTicks;
     int _lastSentTick;
 
-    /// <param name="tickRate">GameLoop 틱레이트(Hz)</param>
-    /// <param name="port">WebSocket 포트</param>
-    /// <param name="sendRate">브로드캐스트 주기(Hz)</param>
+    // 맵은 변경되지 않으므로 1회만 직렬화하여 캐싱
+    List<object>? _cachedMapShapes;
+
     public DebugBroadcaster(GameLoop gameLoop, int tickRate, int port = 9090, int sendRate = 10)
     {
         _gameLoop = gameLoop;
@@ -60,38 +57,52 @@ public sealed class DebugBroadcaster : IDisposable
             if (val == CollisionLayer.None || val == CollisionLayer.All) continue;
             names.Add(val.ToString());
         }
-        names.Add("Hitbox"); // 테스트용 bone hitbox 레이어
+        names.Add("Hitbox");
         return names;
     }
 
-    // ── State snapshot (매 주기) ──
+    // ── State snapshot ──
 
     string BuildStatePayload(int tick)
     {
         var shapes = new List<object>();
 
-        // 1) MapData OBB → layer "Map", feet position으로 변환
-        if (_physics.MapData != null)
+        AppendMapShapes(shapes);
+        AppendBodyShapes(shapes);
+        AppendHitboxShapes(shapes);
+
+        return JsonSerializer.Serialize(new { type = "state", tick, shapes }, JsonOpts);
+    }
+
+    /// <summary>맵 OBB (정적, 캐싱)</summary>
+    void AppendMapShapes(List<object> shapes)
+    {
+        if (_physics.MapData == null) return;
+
+        // 최초 1회만 생성
+        if (_cachedMapShapes == null)
         {
+            _cachedMapShapes = new List<object>(_physics.MapData.Boxes.Count);
             foreach (var b in _physics.MapData.Boxes)
             {
                 var halfSize = new[] { b.SX * 0.5f, b.SY * 0.5f, b.SZ * 0.5f };
-                // center → feet: feetY = centerY - halfSizeY
-                var feetPos = new[] { b.X, b.Y - halfSize[1], b.Z };
-                var rot = ToArray(Quat.FromEuler(b.RX, b.RY, b.RZ));
-
-                shapes.Add(new
+                _cachedMapShapes.Add(new
                 {
                     shape = "OBB",
                     layer = "Map",
-                    pos = feetPos,
-                    rot,
+                    pos = new[] { b.X, b.Y - halfSize[1], b.Z },
+                    rot = ToArray(Quat.FromEuler(b.RX, b.RY, b.RZ)),
                     halfSize
                 });
             }
         }
 
-        // 2) 동적 바디
+        shapes.AddRange(_cachedMapShapes);
+    }
+
+    /// <summary>동적 PhysicsBody</summary>
+    void AppendBodyShapes(List<object> shapes)
+    {
         foreach (var body in _physics.Bodies)
         {
             if (!body.Active) continue;
@@ -135,17 +146,21 @@ public sealed class DebugBroadcaster : IDisposable
                     break;
             }
         }
+    }
 
-        // 3) Player bone hitbox
+    /// <summary>Player bone hitbox</summary>
+    void AppendHitboxShapes(List<object> shapes)
+    {
         foreach (var player in _gameLoop.FindAll<InGame.Unit.Player.Player>())
         {
             var hitboxes = player.EvaluateHitboxes();
             if (hitboxes == null) continue;
+
             foreach (var wh in hitboxes)
             {
                 switch (wh.Type)
                 {
-                    case HitboxDefinition.HitboxShapeType.Sphere:
+                    case HitboxShapeType.Sphere:
                         shapes.Add(new
                         {
                             shape = "Sphere",
@@ -157,7 +172,7 @@ public sealed class DebugBroadcaster : IDisposable
                         });
                         break;
 
-                    case HitboxDefinition.HitboxShapeType.Capsule:
+                    case HitboxShapeType.Capsule:
                         shapes.Add(new
                         {
                             shape = "Capsule",
@@ -171,7 +186,7 @@ public sealed class DebugBroadcaster : IDisposable
                         });
                         break;
 
-                    case HitboxDefinition.HitboxShapeType.OBB:
+                    case HitboxShapeType.OBB:
                         shapes.Add(new
                         {
                             shape = "OBB",
@@ -185,9 +200,9 @@ public sealed class DebugBroadcaster : IDisposable
                 }
             }
         }
-
-        return JsonSerializer.Serialize(new { type = "state", tick, shapes }, JsonOpts);
     }
+
+    // ── 유틸 ──
 
     static float[] ToArray(Vec3 v) => new[] { v.X, v.Y, v.Z };
     static float[] ToArray(Quat q) => new[] { q.X, q.Y, q.Z, q.W };
@@ -197,124 +212,4 @@ public sealed class DebugBroadcaster : IDisposable
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
     };
-}
-
-// ──────────────────────────────────────────────────────────────
-// WebSocket 미니 서버
-// ──────────────────────────────────────────────────────────────
-
-/// <summary>
-/// 디버그 뷰어 전용 WebSocket 서버.
-/// /ws 경로로 접속한 브라우저 소켓을 관리하고 broadcast 기능을 제공한다.
-/// </summary>
-internal sealed class DebugWebSocketServer : IDisposable
-{
-    readonly HttpListener _listener = new();
-    readonly ConcurrentDictionary<WebSocket, byte> _clients = new();
-    readonly CancellationTokenSource _cts = new();
-    readonly Task _acceptLoop;
-
-    public Func<WebSocket, Task>? OnClientConnected { get; set; }
-
-    public DebugWebSocketServer(int port)
-    {
-        string prefix = $"http://localhost:{port}/";
-        _listener.Prefixes.Add(prefix);
-        _listener.Start();
-        Console.WriteLine($"[DebugWS] Listening on ws://localhost:{port}/ws");
-        _acceptLoop = Task.Run(AcceptLoopAsync);
-    }
-
-    public async Task BroadcastAsync(string payload)
-    {
-        var buffer = Encoding.UTF8.GetBytes(payload);
-        foreach (var socket in _clients.Keys)
-            await SendAsync(socket, buffer);
-    }
-
-    public async Task SendAsync(WebSocket socket, string payload)
-    {
-        var buffer = Encoding.UTF8.GetBytes(payload);
-        await SendAsync(socket, buffer);
-    }
-
-    async Task SendAsync(WebSocket socket, byte[] buffer)
-    {
-        try
-        {
-            if (socket.State == WebSocketState.Open)
-                await socket.SendAsync(buffer, WebSocketMessageType.Text, true, CancellationToken.None);
-        }
-        catch { RemoveClient(socket); }
-    }
-
-    async Task AcceptLoopAsync()
-    {
-        while (!_cts.IsCancellationRequested)
-        {
-            HttpListenerContext ctx;
-            try { ctx = await _listener.GetContextAsync(); }
-            catch when (_cts.IsCancellationRequested) { break; }
-            catch { continue; }
-
-            if (!ctx.Request.IsWebSocketRequest || ctx.Request.Url?.AbsolutePath != "/ws")
-            {
-                ctx.Response.StatusCode = 400;
-                ctx.Response.Close();
-                continue;
-            }
-
-            WebSocketContext? wsCtx;
-            try { wsCtx = await ctx.AcceptWebSocketAsync(null); }
-            catch
-            {
-                ctx.Response.StatusCode = 500;
-                ctx.Response.Close();
-                continue;
-            }
-
-            var socket = wsCtx.WebSocket;
-            _clients[socket] = 0;
-            Console.WriteLine("[DebugWS] Client connected");
-
-            if (OnClientConnected != null)
-                _ = OnClientConnected(socket);
-
-            _ = Task.Run(() => ReceiveLoopAsync(socket));
-        }
-    }
-
-    async Task ReceiveLoopAsync(WebSocket socket)
-    {
-        var buffer = new byte[256];
-        try
-        {
-            while (socket.State == WebSocketState.Open)
-            {
-                var result = await socket.ReceiveAsync(buffer, _cts.Token);
-                if (result.MessageType == WebSocketMessageType.Close) break;
-            }
-        }
-        catch { }
-        finally { RemoveClient(socket); }
-    }
-
-    void RemoveClient(WebSocket socket)
-    {
-        if (_clients.TryRemove(socket, out _))
-        {
-            try { socket.Dispose(); } catch { }
-            Console.WriteLine("[DebugWS] Client removed");
-        }
-    }
-
-    public void Dispose()
-    {
-        _cts.Cancel();
-        try { _listener.Stop(); } catch { }
-        foreach (var socket in _clients.Keys)
-        {
-            try { socket.Abort(); } catch { }
-        }
-    }
 }

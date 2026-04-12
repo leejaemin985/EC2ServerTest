@@ -13,12 +13,6 @@ public class GameLoop
     public float DeltaTime { get; }
     public PhysicsWorld PhysicsWorld { get; } = new();
 
-    /// <summary>bake된 애니메이션 클립 관리 (공유 자원)</summary>
-    public AnimationClipManager AnimClips { get; } = new();
-
-    /// <summary>hitbox 정의 (캐릭터 공통, 공유 자원)</summary>
-    public HitboxDefinition? HitboxDefs { get; private set; }
-
     /// <summary>매 틱 Update 이후 호출되는 콜백. Transform 브로드캐스트 등에 사용.</summary>
     public Action? OnPostTick;
 
@@ -46,11 +40,6 @@ public class GameLoop
         if (mapPath != null && System.IO.File.Exists(mapPath))
             PhysicsWorld.LoadMap(mapPath);
 
-        // 애니메이션 데이터 로드
-        AnimClips.LoadFolder("Data/Animations");
-        const string hitboxPath = "Data/Animations/hitbox_defs.json";
-        if (File.Exists(hitboxPath))
-            HitboxDefs = HitboxDefinition.FromFile(hitboxPath);
     }
 
     // ── NetworkObject 등록 / 조회 ──

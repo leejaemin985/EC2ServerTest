@@ -24,6 +24,10 @@ Console.WriteLine($"[TCP] Listening on port {NetworkSettings.TcpPort}");
 Console.WriteLine($"[UDP] Listening on port {NetworkSettings.UdpPort}");
 Console.WriteLine("[Debug] WebSocket viewer on ws://localhost:9090/ws (open DebugViewer/debug-viewer.html)");
 
+// ── 공유 자원 로드 ──
+
+AnimationManager.Init("Data/Animations");
+
 // ── 룸 (우선 하나) ──
 
 var room = new Room(1, TickRate, udpServer, "Maps/map.json");

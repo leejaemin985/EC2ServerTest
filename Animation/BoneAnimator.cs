@@ -45,13 +45,7 @@ public class BoneAnimator
     public void Play(string clipName, bool loop = true)
     {
         var clip = _clipManager.Get(clipName);
-        if (clip == null)
-        {
-            Console.WriteLine($"[BoneAnim] Clip not found: {clipName}");
-            return;
-        }
-
-        if (_currentClip == clip) return;
+        if (clip == null || _currentClip == clip) return;
 
         _currentClip = clip;
         _elapsedTicks = 0;

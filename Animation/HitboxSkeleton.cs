@@ -1,5 +1,4 @@
 using LJMCollision;
-using static HitboxDefinition;
 
 /// <summary>
 /// BoneAnimator + HitboxDefinition을 조합하여
@@ -7,23 +6,9 @@ using static HitboxDefinition;
 /// </summary>
 public class HitboxSkeleton
 {
-    /// <summary>월드 공간에 배치된 개별 hitbox</summary>
-    public struct WorldHitbox
-    {
-        public string Bone;
-        public HitboxDefinition.HitboxShapeType Type;
-        public Vec3 Center;
-        public Quat Rotation;
-
-        // shape별 파라미터
-        public float Radius;     // Sphere, Capsule
-        public float Height;     // Capsule
-        public int Direction;    // Capsule (0=X, 1=Y, 2=Z)
-        public Vec3 HalfSize;    // OBB
-    }
-
     readonly BoneAnimator _animator;
     readonly HitboxDefinition _hitboxDefs;
+    readonly List<WorldHitbox> _results;
 
     // bone 이름 → clip 내 bone index 캐시 (클립 변경 시 갱신)
     int[] _boneIndices;
@@ -34,6 +19,7 @@ public class HitboxSkeleton
         _animator = animator;
         _hitboxDefs = hitboxDefs;
         _boneIndices = new int[hitboxDefs.Hitboxes.Length];
+        _results = new List<WorldHitbox>(hitboxDefs.Hitboxes.Length);
     }
 
     /// <summary>
@@ -54,7 +40,7 @@ public class HitboxSkeleton
                 _boneIndices[i] = clip.GetBoneIndex(_hitboxDefs.Hitboxes[i].Bone);
         }
 
-        var results = new List<WorldHitbox>(_hitboxDefs.Hitboxes.Length);
+        _results.Clear();
 
         for (int i = 0; i < _hitboxDefs.Hitboxes.Length; i++)
         {
@@ -84,22 +70,22 @@ public class HitboxSkeleton
 
             switch (hb.Type)
             {
-                case HitboxDefinition.HitboxShapeType.Sphere:
+                case HitboxShapeType.Sphere:
                     wh.Radius = hb.Radius;
                     break;
-                case HitboxDefinition.HitboxShapeType.Capsule:
+                case HitboxShapeType.Capsule:
                     wh.Radius = hb.Radius;
                     wh.Height = hb.Height;
                     wh.Direction = hb.Direction;
                     break;
-                case HitboxDefinition.HitboxShapeType.OBB:
+                case HitboxShapeType.OBB:
                     wh.HalfSize = hb.Size * 0.5f;
                     break;
             }
 
-            results.Add(wh);
+            _results.Add(wh);
         }
 
-        return results;
+        return _results;
     }
 }

@@ -6,25 +6,6 @@ using LJMCollision;
 /// </summary>
 public class HitboxDefinition
 {
-    public enum HitboxShapeType { Sphere, Capsule, OBB }
-
-    public struct BoneHitbox
-    {
-        public string Bone;
-        public HitboxShapeType Type;
-        public Vec3 Offset;      // bone 기준 local offset
-
-        // Sphere
-        public float Radius;
-
-        // Capsule
-        public float Height;
-        public int Direction;    // 0=X, 1=Y, 2=Z
-
-        // OBB
-        public Vec3 Size;        // full size
-    }
-
     public BoneHitbox[] Hitboxes { get; }
     readonly Dictionary<string, int> _index;
 
@@ -77,11 +58,14 @@ public class HitboxDefinition
                     break;
 
                 case "OBB":
-                default:
                     hb.Type = HitboxShapeType.OBB;
                     var s = el.GetProperty("size");
                     hb.Size = new Vec3(s[0].GetSingle(), s[1].GetSingle(), s[2].GetSingle());
                     break;
+
+                default:
+                    Console.WriteLine($"[HitboxDef] Unknown shape type: {typeStr} (bone: {hb.Bone})");
+                    continue;
             }
 
             hitboxes[i] = hb;
