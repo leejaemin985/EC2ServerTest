@@ -30,7 +30,7 @@ public abstract class Projectile : NetworkObject
 
     // ── 초기화 ──
 
-    public void Initialize(uint ownerNetId, Vec3 direction, Room room)
+    public void Initialize(uint ownerNetId, Vec3 direction, Room room, float? speedOverride = null)
     {
         OwnerNetId = ownerNetId;
         Direction = direction;
@@ -39,7 +39,8 @@ public abstract class Projectile : NetworkObject
 
         if (Body != null)
         {
-            Body.Velocity = direction * Data.Speed;
+            float speed = speedOverride ?? Data.Speed;
+            Body.Velocity = direction * speed;
             Body.UserData = this;
             Body.OnStaticCollision = OnMapHit;
             Body.OnDynamicCollision = OnBodyHit;

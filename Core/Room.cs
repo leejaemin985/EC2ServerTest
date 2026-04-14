@@ -116,11 +116,7 @@ public class Room : IDisposable
         proj.Position = position;
 
         proj.AttachPhysics(GameLoop.PhysicsWorld);
-        proj.Initialize(ownerNetId, direction, this);
-
-        // WeaponData 속도로 오버라이드
-        if (proj.Body != null)
-            proj.Body.Velocity = direction * weaponData.BulletSpeed;
+        proj.Initialize(ownerNetId, direction, this, weaponData.BulletSpeed);
 
         // 스폰 패킷 브로드캐스트
         var spawnPacket = MakeSpawnPacket(proj);
