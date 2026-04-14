@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using InGame.Unit.Player;
+using LJMCollision;
 
 public class Room : IDisposable
 {
@@ -45,6 +46,7 @@ public class Room : IDisposable
 
         var player = GameLoop.Spawn<Player>();
         player.OwnerId = session.PlayerId;
+        player.Room = this;
 
         // 초기 스폰 패킷 ��신
         var spawnData = MakeSpawnPacket(player).ToBytes();
@@ -105,6 +107,32 @@ public class Room : IDisposable
         if (packet.Count == 0) return;
 
         SessionManager.BroadcastUdp(_udpServer, packet.ToBytes());
+    }
+
+    /// <summary>투사체 스폰. Player에서 호출.</summary>
+    public void SpawnProjectile(uint ownerNetId, Vec3 position, Vec3 direction, WeaponData weaponData)
+    {
+        var proj = GameLoop.Spawn<BasicProjectile>();
+        proj.Position = position;
+
+        proj.AttachPhysics(GameLoop.PhysicsWorld);
+        proj.Initialize(ownerNetId, direction, this);
+
+        // WeaponData 속도로 오버라이드
+        if (proj.Body != null)
+            proj.Body.Velocity = direction * weaponData.BulletSpeed;
+
+        // 스폰 패킷 브로드캐스트
+        var spawnPacket = MakeSpawnPacket(proj);
+        _ = SessionManager.BroadcastTcpAsync(spawnPacket.ToBytes());
+    }
+
+    /// <summary>투사체 파괴. Projectile에서 호출.</summary>
+    public void DestroyProjectile(Projectile proj)
+    {
+        proj.Destroy();
+        var despawn = new DespawnPacket { NetId = proj.NetId };
+        _ = SessionManager.BroadcastTcpAsync(despawn.ToBytes());
     }
 
     public void Dispose()

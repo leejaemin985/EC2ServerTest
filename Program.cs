@@ -32,6 +32,7 @@ if (debugHitbox)
 // ── 공유 자원 로드 ──
 
 AnimationManager.Init("Data/Animations");
+WeaponManager.Init("Data/Weapons");
 
 // ── 룸 (우선 하나) ──
 

@@ -1,5 +1,6 @@
 using InGame.FSM;
 using InGame.Unit.Player.States;
+using LJMCollision;
 
 namespace InGame.Unit.Player;
 
@@ -13,9 +14,11 @@ public class Player : NetworkObject
     internal float JumpForce { get; } = PlayerData.JumpForce;
 
     public PhysicsBody? Body { get; private set; }
+    internal Room? Room { get; set; }
 
     internal BoneAnimator? Animator { get; private set; }
     internal HitboxSkeleton? Skeleton { get; private set; }
+    internal Weapon? CurrentWeapon { get; private set; }
 
     internal PlayerInput Input { get; } = new();
     internal PlayerMovement Movement { get; private set; } = null!;
@@ -42,6 +45,7 @@ public class Player : NetworkObject
         InitFsm();
         InitAnimation();
         InitPhysicsBody();
+        InitWeapon();
     }
 
     void InitMovement()
@@ -89,6 +93,13 @@ public class Player : NetworkObject
             Skeleton = new HitboxSkeleton(Animator, hitboxDefs);
     }
 
+    void InitWeapon()
+    {
+        var weaponData = WeaponManager.Get("Rifle_01");
+        if (weaponData != null)
+            CurrentWeapon = new Weapon(weaponData);
+    }
+
     void InitPhysicsBody()
     {
         if (Loop.PhysicsWorld is not { } world) return;
@@ -109,6 +120,7 @@ public class Player : NetworkObject
 
     protected internal override void Update(float deltaTime)
     {
+        CurrentWeapon?.Update(deltaTime);
         Fsm.Update(deltaTime);
     }
 
@@ -118,15 +130,47 @@ public class Player : NetworkObject
 
     protected internal override void HandlePacket(PacketType type, PacketReader reader)
     {
-        if (type != PacketType.Input) return;
-        if (reader.Remaining < 16) return;
+        switch (type)
+        {
+            case PacketType.Input:
+                if (reader.Remaining < 16) return;
+                float h = reader.ReadFloat();
+                float v = reader.ReadFloat();
+                float yaw = reader.ReadFloat();
+                float pitch = reader.ReadFloat();
+                bool jump = reader.Remaining >= 1 && reader.ReadByte() != 0;
+                SetInput(h, v, yaw, pitch, jump);
+                break;
 
-        float h = reader.ReadFloat();
-        float v = reader.ReadFloat();
+            case PacketType.Shoot:
+                HandleShoot(reader);
+                break;
+        }
+    }
+
+    void HandleShoot(PacketReader reader)
+    {
+        if (CurrentWeapon == null) return;
+        if (reader.Remaining < 8) return;
+
         float yaw = reader.ReadFloat();
         float pitch = reader.ReadFloat();
-        bool jump = reader.Remaining >= 1 && reader.ReadByte() != 0;
-        SetInput(h, v, yaw, pitch, jump);
+
+        if (!CurrentWeapon.TryFire()) return;
+
+        // 발사 방향 계산 (클라 pitch: 위를 보면 음수)
+        float yawRad = yaw * MathF.PI / 180f;
+        float pitchRad = -pitch * MathF.PI / 180f;
+        float cosPitch = MathF.Cos(pitchRad);
+        var direction = new Vec3(
+            cosPitch * MathF.Sin(yawRad),
+            MathF.Sin(pitchRad),
+            cosPitch * MathF.Cos(yawRad));
+
+        // 총구 위치
+        var muzzlePos = CurrentWeapon.GetMuzzleWorldPosition(Position, Rotation);
+
+        Room?.SpawnProjectile(NetId, muzzlePos, direction, CurrentWeapon.Data);
     }
 
     protected internal override void OnDestroy()
