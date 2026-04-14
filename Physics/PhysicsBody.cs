@@ -76,6 +76,9 @@ public class PhysicsBody
     /// <summary>바닥에 닿아 있는지 여부. 맵 충돌 시 PhysicsWorld가 갱신한다.</summary>
     public bool Grounded { get; set; }
 
+    /// <summary>바닥 법선 벡터. Grounded일 때만 유효.</summary>
+    public Vec3 GroundNormal { get; set; }
+
     /// <summary>직전 틱의 맵 충돌 결과.</summary>
     public OverlapResult LastStaticOverlap { get; set; }
 

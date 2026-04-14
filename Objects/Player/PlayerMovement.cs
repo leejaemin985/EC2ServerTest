@@ -28,13 +28,41 @@ public class PlayerMovement
         var body = _player.Body;
         if (body == null) return;
 
+        // 입력 정규화 (대각선 이동 시 속도 초과 방지)
+        float h = input.H;
+        float v = input.V;
+        float inputLen = MathF.Sqrt(h * h + v * v);
+        if (inputLen > 1f) { h /= inputLen; v /= inputLen; }
+
         float rad = input.Yaw * MathF.PI / 180f;
         float sin = MathF.Sin(rad);
         float cos = MathF.Cos(rad);
-        float moveX = input.H * cos + input.V * sin;
-        float moveZ = -input.H * sin + input.V * cos;
-        Vec3 inputVelocity = new Vec3(moveX, 0f, moveZ) * _player.MoveSpeed;
+        float moveX = h * cos + v * sin;
+        float moveZ = -h * sin + v * cos;
+        Vec3 moveDir = new Vec3(moveX, 0f, moveZ) * _player.MoveSpeed;
 
-        body.Velocity = new Vec3(inputVelocity.X, body.Velocity.Y, inputVelocity.Z);
+        // grounded + 경사면일 때: 이동 방향을 바닥 평면에 투영
+        if (body.Grounded && body.GroundNormal.Y < 0.999f)
+        {
+            Vec3 n = body.GroundNormal;
+            // velocity를 ground plane에 투영: v - dot(v, n) * n
+            float dot = moveDir.X * n.X + moveDir.Y * n.Y + moveDir.Z * n.Z;
+            Vec3 projected = new Vec3(
+                moveDir.X - dot * n.X,
+                moveDir.Y - dot * n.Y,
+                moveDir.Z - dot * n.Z);
+
+            // 투영 후 속력 보존 (경사면에서도 동일한 이동 속도)
+            float origLen = MathF.Sqrt(moveDir.X * moveDir.X + moveDir.Z * moveDir.Z);
+            float projLen = MathF.Sqrt(projected.X * projected.X + projected.Y * projected.Y + projected.Z * projected.Z);
+            if (projLen > 0.001f)
+                projected = projected * (origLen / projLen);
+
+            body.Velocity = projected;
+        }
+        else
+        {
+            body.Velocity = new Vec3(moveDir.X, body.Velocity.Y, moveDir.Z);
+        }
     }
 }

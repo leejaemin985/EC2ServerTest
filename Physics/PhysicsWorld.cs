@@ -112,6 +112,7 @@ public partial class PhysicsWorld
         if (body.UseGravity)
         {
             body.Grounded = moveResult.Grounded;
+            body.GroundNormal = moveResult.Grounded ? moveResult.GroundNormal : Vec3.Zero;
 
             if (moveResult.Grounded && body.Velocity.Y < 0f)
                 body.Velocity = new Vec3(body.Velocity.X, 0f, body.Velocity.Z);
