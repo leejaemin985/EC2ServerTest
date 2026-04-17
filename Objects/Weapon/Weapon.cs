@@ -43,8 +43,8 @@ public class Weapon
         // 투사체 스폰
         var proj = _objects.Spawn<BasicProjectile>();
         proj.Position = muzzlePos;
-        proj.AttachPhysics(_physics);
-        proj.Initialize(ownerNetId, direction, Data.BulletSpeed);
+        proj.AttachPhysics(_physics, Data.BulletRadius);
+        proj.Initialize(ownerNetId, direction, Data.BulletSpeed, Data.BulletLifetime);
 
         return true;
     }

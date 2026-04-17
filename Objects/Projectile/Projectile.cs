@@ -4,7 +4,6 @@ using InGame.Unit.Player;
 /// <summary>
 /// 투사체 베이스 클래스.
 /// 공통: 스폰, 수명, 맵/플레이어 충돌 콜백 연결, 파괴.
-/// 서브클래스: 데이터(ProjectileData) 지정, 충돌 응답(파괴/반사/관통 등) 결정.
 /// 데미지는 투사체가 관리하지 않음 — 히트 시 OnHit 콜백으로 외부(무기)에 전달.
 /// </summary>
 public abstract class Projectile : NetworkObject
@@ -15,10 +14,7 @@ public abstract class Projectile : NetworkObject
     public uint OwnerNetId { get; protected set; }
     public Vec3 Direction { get; protected set; }
 
-    /// <summary>이 투사체의 수치 데이터</summary>
-    public abstract ProjectileData Data { get; }
-
-    /// <summary>히트 시 외부 콜백. 무기가 등록하여 데미지 등을 처리한다.</summary>
+    /// <summary>히트 시 외부 콜백.</summary>
     public Action<Projectile, Player>? OnHit { get; set; }
 
     bool _destroyed;
@@ -29,15 +25,14 @@ public abstract class Projectile : NetworkObject
 
     // ── 초기화 ──
 
-    public void Initialize(uint ownerNetId, Vec3 direction, float? speedOverride = null)
+    public void Initialize(uint ownerNetId, Vec3 direction, float speed, float lifetime = 5f)
     {
         OwnerNetId = ownerNetId;
         Direction = direction;
-        _lifetime = Data.MaxLifetime;
+        _lifetime = lifetime;
 
         if (Body != null)
         {
-            float speed = speedOverride ?? Data.Speed;
             Body.Velocity = direction * speed;
             Body.UserData = this;
             Body.OnStaticCollision = OnMapHit;
@@ -45,17 +40,17 @@ public abstract class Projectile : NetworkObject
         }
     }
 
-    /// <summary>PhysicsBody를 Data 기반으로 생성하고 월드에 등록한다.</summary>
-    public void AttachPhysics(PhysicsWorld world)
+    /// <summary>PhysicsBody를 생성하고 월드에 등록한다.</summary>
+    public void AttachPhysics(PhysicsWorld world, float radius, bool useGravity = false, float drag = 1f)
     {
         var body = new PhysicsBody(
             Transform, BodyType.Dynamic,
-            Data.CreateShape(),
+            new SphereShape(radius),
             CollisionLayer.Projectile)
         {
             Mass = 0f,
-            UseGravity = Data.UseGravity,
-            Drag = Data.Drag,
+            UseGravity = useGravity,
+            Drag = drag,
         };
         Body = body;
         world.Add(body);
