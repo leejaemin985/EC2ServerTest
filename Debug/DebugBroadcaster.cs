@@ -153,7 +153,7 @@ public sealed class DebugBroadcaster : IDisposable
     /// <summary>Player bone hitbox</summary>
     void AppendHitboxShapes(List<object> shapes)
     {
-        foreach (var player in _gameLoop.FindAll<InGame.Unit.Player.Player>())
+        foreach (var player in _gameLoop.Objects.FindAll<InGame.Unit.Player.Player>())
         {
             var hitboxes = player.EvaluateHitboxes(_gameLoop.CurrentTick);
             if (hitboxes == null) continue;

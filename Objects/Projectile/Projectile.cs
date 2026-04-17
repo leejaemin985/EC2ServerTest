@@ -13,7 +13,6 @@ public abstract class Projectile : NetworkObject
 
     public PhysicsBody? Body { get; set; }
     public uint OwnerNetId { get; protected set; }
-    public Room? Room { get; protected set; }
     public Vec3 Direction { get; protected set; }
 
     /// <summary>이 투사체의 수치 데이터</summary>
@@ -30,11 +29,10 @@ public abstract class Projectile : NetworkObject
 
     // ── 초기화 ──
 
-    public void Initialize(uint ownerNetId, Vec3 direction, Room room, float? speedOverride = null)
+    public void Initialize(uint ownerNetId, Vec3 direction, float? speedOverride = null)
     {
         OwnerNetId = ownerNetId;
         Direction = direction;
-        Room = room;
         _lifetime = Data.MaxLifetime;
 
         if (Body != null)
@@ -65,13 +63,11 @@ public abstract class Projectile : NetworkObject
 
     // ── 충돌 응답 (서브클래스에서 override 가능) ──
 
-    /// <summary>맵(정적 OBB) 충돌 시 호출. 기본: 파괴.</summary>
     protected virtual void OnMapHit(PhysicsBody body, OverlapResult overlap)
     {
         DestroyProjectile();
     }
 
-    /// <summary>동적 바디 충돌 시 호출. 기본: 자기 자신 무시, 플레이어 Hit 콜백 + 파괴.</summary>
     protected virtual void OnBodyHit(PhysicsBody self, PhysicsBody other, CollisionResult result)
     {
         if (_destroyed) return;
@@ -99,6 +95,6 @@ public abstract class Projectile : NetworkObject
     {
         if (_destroyed) return;
         _destroyed = true;
-        Room?.DestroyProjectile(this);
+        Destroy();
     }
 }

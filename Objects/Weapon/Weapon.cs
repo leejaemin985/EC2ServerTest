@@ -2,26 +2,50 @@ using LJMCollision;
 
 /// <summary>
 /// 플레이어가 소유하는 무기 컴포넌트.
-/// 발사 가능 여부(쿨다운)만 관리하며, 벽 체크/투사체 생성/데미지는 외부 책임.
+/// 발사 가능 여부(쿨다운), 방향 계산, 투사체 스폰까지 담당.
 /// </summary>
 public class Weapon
 {
     public WeaponData Data { get; }
 
+    readonly NetworkObjectManager _objects;
+    readonly PhysicsWorld _physics;
+
     float _cooldownRemaining;
 
     public bool CanFire => _cooldownRemaining <= 0f;
 
-    public Weapon(WeaponData data)
+    public Weapon(WeaponData data, NetworkObjectManager objects, PhysicsWorld physics)
     {
         Data = data;
+        _objects = objects;
+        _physics = physics;
     }
 
-    /// <summary>발사 시도. 쿨다운이 끝났으면 true + 쿨다운 시작.</summary>
-    public bool TryFire()
+    /// <summary>발사. 쿨다운 체크 → 방향 계산 → 투사체 스폰.</summary>
+    public bool Fire(uint ownerNetId, Vec3 ownerPos, Quat ownerRot, float yaw, float pitch)
     {
         if (!CanFire) return false;
         _cooldownRemaining = Data.FireRate;
+
+        // 발사 방향 계산 (클라 pitch: 위를 보면 음수)
+        float yawRad = yaw * MathF.PI / 180f;
+        float pitchRad = -pitch * MathF.PI / 180f;
+        float cosPitch = MathF.Cos(pitchRad);
+        var direction = new Vec3(
+            cosPitch * MathF.Sin(yawRad),
+            MathF.Sin(pitchRad),
+            cosPitch * MathF.Cos(yawRad));
+
+        // 총구 위치
+        var muzzlePos = ownerPos + ownerRot.Rotate(Data.MuzzleOffset);
+
+        // 투사체 스폰
+        var proj = _objects.Spawn<BasicProjectile>();
+        proj.Position = muzzlePos;
+        proj.AttachPhysics(_physics);
+        proj.Initialize(ownerNetId, direction, Data.BulletSpeed);
+
         return true;
     }
 
@@ -30,11 +54,5 @@ public class Weapon
     {
         if (_cooldownRemaining > 0f)
             _cooldownRemaining -= deltaTime;
-    }
-
-    /// <summary>총구 월드 위치 계산.</summary>
-    public Vec3 GetMuzzleWorldPosition(Vec3 playerPos, Quat playerRot)
-    {
-        return playerPos + playerRot.Rotate(Data.MuzzleOffset);
     }
 }

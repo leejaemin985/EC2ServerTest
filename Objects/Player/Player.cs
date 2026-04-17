@@ -1,6 +1,5 @@
 using InGame.FSM;
 using InGame.Unit.Player.States;
-using LJMCollision;
 
 namespace InGame.Unit.Player;
 
@@ -14,7 +13,6 @@ public class Player : NetworkObject
     internal float JumpForce { get; } = PlayerData.JumpForce;
 
     public PhysicsBody? Body { get; private set; }
-    internal Room? Room { get; set; }
 
     internal BoneAnimator? Animator { get; private set; }
     internal HitboxSkeleton? Skeleton { get; private set; }
@@ -95,9 +93,9 @@ public class Player : NetworkObject
 
     void InitWeapon()
     {
-        var weaponData = WeaponManager.Get("Rifle_01");
+        var weaponData = WeaponManager.Get("TestRifle");
         if (weaponData != null)
-            CurrentWeapon = new Weapon(weaponData);
+            CurrentWeapon = new Weapon(weaponData, Loop.Objects, Loop.PhysicsWorld);
     }
 
     void InitPhysicsBody()
@@ -150,27 +148,12 @@ public class Player : NetworkObject
 
     void HandleShoot(PacketReader reader)
     {
-        if (CurrentWeapon == null) return;
-        if (reader.Remaining < 8) return;
+        if (CurrentWeapon == null || reader.Remaining < 8) return;
 
         float yaw = reader.ReadFloat();
         float pitch = reader.ReadFloat();
 
-        if (!CurrentWeapon.TryFire()) return;
-
-        // 발사 방향 계산 (클라 pitch: 위를 보면 음수)
-        float yawRad = yaw * MathF.PI / 180f;
-        float pitchRad = -pitch * MathF.PI / 180f;
-        float cosPitch = MathF.Cos(pitchRad);
-        var direction = new Vec3(
-            cosPitch * MathF.Sin(yawRad),
-            MathF.Sin(pitchRad),
-            cosPitch * MathF.Cos(yawRad));
-
-        // 총구 위치
-        var muzzlePos = CurrentWeapon.GetMuzzleWorldPosition(Position, Rotation);
-
-        Room?.SpawnProjectile(NetId, muzzlePos, direction, CurrentWeapon.Data);
+        CurrentWeapon.Fire(NetId, Position, Rotation, yaw, pitch);
     }
 
     protected internal override void OnDestroy()

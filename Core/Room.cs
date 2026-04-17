@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
 using InGame.Unit.Player;
-using LJMCollision;
 
 public class Room : IDisposable
 {
@@ -23,6 +22,10 @@ public class Room : IDisposable
         if (debugViewer)
             _debugBroadcaster = new DebugBroadcaster(GameLoop, tickRate, hitbox: debugHitbox);
 
+        // 스폰/디스폰 이벤트 구독 → 브로드캐스트
+        GameLoop.Objects.OnObjectSpawned += OnObjectSpawned;
+        GameLoop.Objects.OnObjectDestroyed += OnObjectDestroyed;
+
         GameLoop.OnPostTick = () =>
         {
             FlushObjectPackets();
@@ -31,12 +34,26 @@ public class Room : IDisposable
         };
     }
 
-    // 플레이어 입장 처리
+    // ── 이벤트 핸들러 ──
+
+    void OnObjectSpawned(NetworkObject obj)
+    {
+        var spawnPacket = MakeSpawnPacket(obj);
+        _ = SessionManager.BroadcastTcpAsync(spawnPacket.ToBytes());
+    }
+
+    void OnObjectDestroyed(NetworkObject obj)
+    {
+        var despawn = new DespawnPacket { NetId = obj.NetId };
+        _ = SessionManager.BroadcastTcpAsync(despawn.ToBytes());
+    }
+
+    // ── 플레이어 입장/퇴장 ──
+
     public async Task PlayerJoinAsync(Session session)
     {
         Console.WriteLine($"[Room {Id}] Player {session.PlayerId} joined");
 
-        // PlayerId를 먼저 통지해 클라가 자신을 확정
         var idPacket = new PlayerIdAssignPacket
         {
             Tick = GameLoop.CurrentTick,
@@ -44,16 +61,21 @@ public class Room : IDisposable
         };
         await SessionManager.SendTcpAsync(session, idPacket.ToBytes());
 
-        var player = GameLoop.Spawn<Player>();
-        player.OwnerId = session.PlayerId;
-        player.Room = this;
+        // 스폰 이벤트 임시 해제 (개별 전송할 것이므로)
+        GameLoop.Objects.OnObjectSpawned -= OnObjectSpawned;
 
-        // 초기 스폰 패킷 ��신
+        var player = GameLoop.Objects.Spawn<Player>();
+        player.OwnerId = session.PlayerId;
+
+        // 스폰 이벤트 복원
+        GameLoop.Objects.OnObjectSpawned += OnObjectSpawned;
+
+        // 자신에게 자기 스폰 패킷 전송
         var spawnData = MakeSpawnPacket(player).ToBytes();
         await SessionManager.SendTcpAsync(session, spawnData);
 
         // 기존 오브젝트 스냅샷 전송
-        foreach (var existing in GameLoop.FindAll<NetworkObject>())
+        foreach (var existing in GameLoop.Objects.FindAll<NetworkObject>())
         {
             if (existing.NetId == player.NetId) continue;
             await SessionManager.SendTcpAsync(session, MakeSpawnPacket(existing).ToBytes());
@@ -67,7 +89,7 @@ public class Room : IDisposable
     {
         Console.WriteLine($"[Room {Id}] Player {session.PlayerId} left");
 
-        foreach (var obj in GameLoop.FindByOwner(session.PlayerId))
+        foreach (var obj in GameLoop.Objects.FindByOwner(session.PlayerId))
         {
             obj.Destroy();
             var despawn = new DespawnPacket { NetId = obj.NetId };
@@ -77,58 +99,39 @@ public class Room : IDisposable
         SessionManager.RemoveSession(session.PlayerId);
     }
 
-    // 패킷 처리
+    // ── 패킷 처리 ──
+
     public void HandlePacket(Session session, PacketType type, int tick, byte[] payload)
     {
         var reader = new PacketReader(payload);
         if (reader.Remaining < 4) return;
 
         uint netId = reader.ReadUInt();
-        var obj = GameLoop.Find(netId);
+        var obj = GameLoop.Objects.Find(netId);
         if (obj == null || obj.OwnerId != session.PlayerId) return;
 
         obj.HandlePacket(type, reader);
     }
 
-    // 오브젝트 패킷 큐 flush
+    // ── 오브젝트 패킷 큐 flush ──
+
     void FlushObjectPackets()
     {
-        foreach (var obj in GameLoop.FindAll<NetworkObject>())
+        foreach (var obj in GameLoop.Objects.FindAll<NetworkObject>())
         {
             foreach (var packet in obj.DrainPackets())
                 _ = SessionManager.BroadcastTcpAsync(packet.ToBytes());
         }
     }
 
-    // Transform 브로드캐스트
+    // ── Transform 브로드캐스트 ──
+
     void BroadcastTransforms()
     {
-        var packet = GameLoop.BuildTransformSnapshot();
+        var packet = GameLoop.Objects.BuildTransformSnapshot(GameLoop.CurrentTick);
         if (packet.Count == 0) return;
 
         SessionManager.BroadcastUdp(_udpServer, packet.ToBytes());
-    }
-
-    /// <summary>투사체 스폰. Player에서 호출.</summary>
-    public void SpawnProjectile(uint ownerNetId, Vec3 position, Vec3 direction, WeaponData weaponData)
-    {
-        var proj = GameLoop.Spawn<BasicProjectile>();
-        proj.Position = position;
-
-        proj.AttachPhysics(GameLoop.PhysicsWorld);
-        proj.Initialize(ownerNetId, direction, this, weaponData.BulletSpeed);
-
-        // 스폰 패킷 브로드캐스트
-        var spawnPacket = MakeSpawnPacket(proj);
-        _ = SessionManager.BroadcastTcpAsync(spawnPacket.ToBytes());
-    }
-
-    /// <summary>투사체 파괴. Projectile에서 호출.</summary>
-    public void DestroyProjectile(Projectile proj)
-    {
-        proj.Destroy();
-        var despawn = new DespawnPacket { NetId = proj.NetId };
-        _ = SessionManager.BroadcastTcpAsync(despawn.ToBytes());
     }
 
     public void Dispose()
@@ -136,7 +139,8 @@ public class Room : IDisposable
         _debugBroadcaster?.Dispose();
     }
 
-    // 패킷 직렬화 헬퍼
+    // ── 헬퍼 ──
+
     SpawnPacket MakeSpawnPacket(NetworkObject obj)
     {
         return new SpawnPacket
@@ -154,5 +158,4 @@ public class Room : IDisposable
             RotW = obj.Rotation.W,
         };
     }
-
 }
