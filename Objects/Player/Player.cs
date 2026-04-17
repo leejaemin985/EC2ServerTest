@@ -94,8 +94,15 @@ public class Player : NetworkObject
     void InitWeapon()
     {
         var weaponData = WeaponManager.Get("TestRifle");
-        if (weaponData != null)
-            CurrentWeapon = new Weapon(weaponData, Loop.Objects, Loop.PhysicsWorld);
+        if (weaponData == null) return;
+
+        CurrentWeapon = new Weapon(weaponData, Loop.Objects, Loop.PhysicsWorld);
+        EnqueuePacket(new WeaponEquipPacket
+        {
+            Tick = Loop.CurrentTick,
+            NetId = NetId,
+            WeaponId = weaponData.Id,
+        });
     }
 
     void InitPhysicsBody()

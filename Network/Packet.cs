@@ -31,6 +31,7 @@ public enum PacketType : ushort
     // 전투 / 액션 (3000 ~ 3999)
     Shoot = 3000,
     Hit = 3001,
+    WeaponEquip = 3002,
 
     // 상태 / 동기화 (4000 ~ 4999)
     PlayerState = 4000,

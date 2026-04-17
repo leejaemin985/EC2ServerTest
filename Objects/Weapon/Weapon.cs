@@ -41,7 +41,7 @@ public class Weapon
         var muzzlePos = ownerPos + ownerRot.Rotate(Data.MuzzleOffset);
 
         // 투사체 스폰
-        var proj = _objects.Spawn<BasicProjectile>();
+        var proj = _objects.Spawn<Projectile>();
         proj.Position = muzzlePos;
         proj.AttachPhysics(_physics, Data.BulletRadius);
         proj.Initialize(ownerNetId, direction, Data.BulletSpeed, Data.BulletLifetime);

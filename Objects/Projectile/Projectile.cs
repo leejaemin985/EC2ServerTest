@@ -6,7 +6,7 @@ using InGame.Unit.Player;
 /// 공통: 스폰, 수명, 맵/플레이어 충돌 콜백 연결, 파괴.
 /// 데미지는 투사체가 관리하지 않음 — 히트 시 OnHit 콜백으로 외부(무기)에 전달.
 /// </summary>
-public abstract class Projectile : NetworkObject
+public class Projectile : NetworkObject
 {
     public override NetworkObjectType ObjectType => NetworkObjectType.Projectile;
 
@@ -20,7 +20,7 @@ public abstract class Projectile : NetworkObject
     bool _destroyed;
     float _lifetime;
 
-    protected Projectile(uint netId, GameLoop loop, Transform? transform = null)
+    internal Projectile(uint netId, GameLoop loop, Transform? transform = null)
         : base(netId, loop, transform) { }
 
     // ── 초기화 ──
